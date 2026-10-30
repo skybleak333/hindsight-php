@@ -14,3 +14,5 @@ All notable changes to this package are documented here. The format follows [Kee
 - Laravel service provider, config, facade and `hindsight:status` command.
 - `Memory` middleware for Laravel AI SDK agents: recalls relevant memories before the first step, retains the exchange after the final step.
 - `Recall`, `Retain` and `Reflect` tools for Laravel AI SDK agents.
+- `withTimeout()` for a copy of the client with a shorter timeout. The middleware and tools use short timeouts by default, so a hung server does not hold up an agent for two minutes.
+- `ConfigurationException` for a malformed URL, thrown when the client is created.

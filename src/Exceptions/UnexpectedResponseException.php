@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Fedoseev\Hindsight\Exceptions;
 
+use Fedoseev\Hindsight\Text;
 use RuntimeException;
 
 /**
@@ -16,7 +17,7 @@ final class UnexpectedResponseException extends RuntimeException implements Hind
     {
         $got = match (true) {
             $body === null => 'an empty body',
-            is_string($body) => 'a non-JSON body: '.mb_strimwidth(trim($body), 0, 120, '...'),
+            is_string($body) => 'a non-JSON body: '.Text::limit(trim($body), 120),
             default => 'JSON '.get_debug_type($body),
         };
 

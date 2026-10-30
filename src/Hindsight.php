@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Fedoseev\Hindsight;
 
+use Closure;
 use DateTimeInterface;
+use Fedoseev\Hindsight\Exceptions\ConfigurationException;
 use Fedoseev\Hindsight\Exceptions\OperationFailedException;
 use Fedoseev\Hindsight\Exceptions\TimeoutException;
 use Fedoseev\Hindsight\Responses\Operation;
@@ -35,6 +37,9 @@ final class Hindsight
 
     private readonly Transport $transport;
 
+    /** Set when the client built its own Guzzle client, so withTimeout() can build another. */
+    private readonly ?Closure $rebuild;
+
     /**
      * @param  string  $baseUrl  Where the API listens, e.g. http://localhost:8888 or https://api.hindsight.vectorize.io.
      * @param  string|null  $apiKey  Sent as a Bearer token. Not needed for a local server without auth.
@@ -44,6 +49,8 @@ final class Hindsight
      * @param  array<string, string>  $headers  Extra headers for every request.
      * @param  LoggerInterface|null  $logger  Receives a warning when the server ignored a parameter it does not know,
      *                                        e.g. a misspelled key in $options.
+     *
+     * @throws ConfigurationException when the URL is not an http(s) URL.
      */
     public function __construct(
         string $baseUrl = 'http://localhost:8888',
@@ -55,7 +62,21 @@ final class Hindsight
         ?StreamFactoryInterface $streamFactory = null,
         ?LoggerInterface $logger = null,
     ) {
+        $parts = parse_url($baseUrl);
+
+        $valid = $parts !== false
+            && in_array(strtolower($parts['scheme'] ?? ''), ['http', 'https'], true)
+            && preg_match('/^(\[[0-9a-fA-F:.]+\]|[A-Za-z0-9.-]+)$/', $parts['host'] ?? '') === 1;
+
+        if (! $valid) {
+            throw new ConfigurationException("The Hindsight URL must be an http or https URL, got '{$baseUrl}'.");
+        }
+
         $factory = new HttpFactory;
+
+        $this->rebuild = $httpClient === null
+            ? static fn (float $seconds): self => new self($baseUrl, $apiKey, null, $seconds, $headers, $requestFactory, $streamFactory, $logger)
+            : null;
 
         $this->transport = new Transport(
             $baseUrl,
@@ -66,6 +87,16 @@ final class Hindsight
             $headers,
             $logger,
         );
+    }
+
+    /**
+     * A copy of this client that gives up after $seconds, e.g. for calls on a user's request path.
+     *
+     * A client created with your own PSR-18 client is returned unchanged: its timeout is set on that client.
+     */
+    public function withTimeout(float $seconds): self
+    {
+        return $this->rebuild === null ? $this : ($this->rebuild)($seconds);
     }
 
     // Monitoring
@@ -278,15 +309,17 @@ final class Hindsight
     }
 
     /**
-     * Create a bank, or update it if it exists. Banks are also created on first use with default settings.
+     * Create a bank, or update it if it exists. Retain also creates a missing bank, with default settings.
      *
+     * @param  string|null  $name  A display label shown in listBanks().
+     * @param  string|null  $reflectMission  How reflect should interpret and use the bank's memories.
      * @param  array<string, mixed>  $options  Other fields, e.g. ["disposition_empathy" => 4, "enable_observations" => false].
      * @return array<string, mixed>
      */
-    public function createBank(string $bankId, ?string $name = null, ?string $mission = null, array $options = []): array
+    public function createBank(string $bankId, ?string $name = null, ?string $reflectMission = null, array $options = []): array
     {
         return $this->transport->json('PUT', Transport::path('/v1/default/banks/%s', $bankId), [
-            ...self::withoutNulls(['name' => $name, 'mission' => $mission]),
+            ...self::withoutNulls(['name' => $name, 'reflect_mission' => $reflectMission]),
             ...$options,
         ]);
     }
@@ -297,20 +330,12 @@ final class Hindsight
      * @param  array<string, mixed>  $options
      * @return array<string, mixed>
      */
-    public function updateBank(string $bankId, ?string $name = null, ?string $mission = null, array $options = []): array
+    public function updateBank(string $bankId, ?string $name = null, ?string $reflectMission = null, array $options = []): array
     {
         return $this->transport->json('PATCH', Transport::path('/v1/default/banks/%s', $bankId), [
-            ...self::withoutNulls(['name' => $name, 'mission' => $mission]),
+            ...self::withoutNulls(['name' => $name, 'reflect_mission' => $reflectMission]),
             ...$options,
         ]);
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    public function getBankProfile(string $bankId): array
-    {
-        return $this->transport->json('GET', Transport::path('/v1/default/banks/%s/profile', $bankId));
     }
 
     /**

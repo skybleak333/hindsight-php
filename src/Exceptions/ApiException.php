@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Fedoseev\Hindsight\Exceptions;
 
+use Fedoseev\Hindsight\Text;
 use RuntimeException;
 
 /**
@@ -57,7 +58,7 @@ class ApiException extends RuntimeException implements HindsightException
                 return $messages === [] ? null : implode('; ', $messages);
             }
 
-            return $body === [] ? null : mb_strimwidth((string) json_encode($body), 0, 300, '...');
+            return $body === [] ? null : Text::limit((string) json_encode($body), 300);
         }
 
         if (! is_string($body) || trim($body) === '') {
@@ -70,7 +71,7 @@ class ApiException extends RuntimeException implements HindsightException
 
         $text = trim((string) preg_replace('/\s+/', ' ', strip_tags($body)));
 
-        return $text === '' ? null : mb_strimwidth($text, 0, 300, '...');
+        return $text === '' ? null : Text::limit($text, 300);
     }
 
     /**

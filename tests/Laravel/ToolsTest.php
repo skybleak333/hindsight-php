@@ -35,7 +35,7 @@ final class ToolsTest extends TestCase
         $output = Recall::bank('b')->tags(['user:42'])->budget(Budget::Mid, maxTokens: 2000)->handle(new Request(['query' => 'Alice plan']));
 
         $this->assertSame("Relevant memories, most relevant first:\n- Alice is on the Pro plan (2026-09-01)\n- Alice prefers email", $output);
-        $this->assertSame(['query' => 'Alice plan', 'budget' => 'mid', 'max_tokens' => 2000, 'tags' => ['user:42']], $this->sentJson(0));
+        $this->assertSame(['query' => 'Alice plan', 'budget' => 'mid', 'max_tokens' => 2000, 'tags' => ['user:42'], 'tags_match' => 'any_strict'], $this->sentJson(0));
     }
 
     public function test_recall_says_so_when_nothing_is_found(): void
@@ -71,12 +71,23 @@ final class ToolsTest extends TestCase
     public function test_errors_go_back_to_the_model_instead_of_ending_the_run(): void
     {
         Exceptions::fake();
-        $this->http->json(['detail' => 'Bank not found: b'], 404);
+        $this->http->json(['detail' => 'Not Found'], 404);
 
         $output = (new Recall('b'))->handle(new Request(['query' => 'Alice']));
 
-        $this->assertSame('Memory is unavailable: Hindsight API error 404: Bank not found: b', $output);
+        $this->assertSame('Memory is unavailable: Hindsight API error 404: Not Found', $output);
         Exceptions::assertReported(NotFoundException::class);
+    }
+
+    public function test_a_bank_nobody_wrote_to_means_no_memories(): void
+    {
+        Exceptions::fake();
+        $this->http->json(['detail' => "Bank 'b' not found"], 404);
+        $this->http->json(['detail' => "Bank 'b' not found"], 404);
+
+        $this->assertSame('No relevant memories found.', (new Recall('b'))->handle(new Request(['query' => 'Alice'])));
+        $this->assertSame('There is nothing in memory yet.', (new Reflect('b'))->handle(new Request(['query' => 'Alice'])));
+        Exceptions::assertNothingReported();
     }
 
     public function test_tools_describe_themselves(): void

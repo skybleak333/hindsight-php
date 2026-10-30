@@ -7,6 +7,7 @@ namespace Fedoseev\Hindsight\Laravel\Facades;
 use Illuminate\Support\Facades\Facade;
 
 /**
+ * @method static \Fedoseev\Hindsight\Hindsight withTimeout(float $seconds)
  * @method static array<string, mixed> health()
  * @method static array<string, mixed> version()
  * @method static \Fedoseev\Hindsight\Responses\RetainResponse retain(string $bankId, string|list<array<string, mixed>> $content, \DateTimeInterface|string|null $timestamp = null, ?string $context = null, ?string $documentId = null, array<string, string>|null $metadata = null, list<array{text: string, type?: string|null}>|null $entities = null, list<string>|null $tags = null, string|null $updateMode = null, bool $async = false, string|null $operationId = null, ?string $strategy = null, array<string, mixed> $options = [])
@@ -17,9 +18,8 @@ use Illuminate\Support\Facades\Facade;
  * @method static array<string, mixed> getMemory(string $bankId, string $memoryId)
  * @method static array<string, mixed> clearMemories(string $bankId, ?string $type = null)
  * @method static array<string, mixed> listBanks(?string $search = null, ?int $limit = null, ?int $offset = null)
- * @method static array<string, mixed> createBank(string $bankId, ?string $name = null, ?string $mission = null, array<string, mixed> $options = [])
- * @method static array<string, mixed> updateBank(string $bankId, ?string $name = null, ?string $mission = null, array<string, mixed> $options = [])
- * @method static array<string, mixed> getBankProfile(string $bankId)
+ * @method static array<string, mixed> createBank(string $bankId, string|null $name = null, string|null $reflectMission = null, array<string, mixed> $options = [])
+ * @method static array<string, mixed> updateBank(string $bankId, ?string $name = null, ?string $reflectMission = null, array<string, mixed> $options = [])
  * @method static array<string, mixed> getBankStats(string $bankId)
  * @method static array<string, mixed> deleteBank(string $bankId)
  * @method static array<string, mixed> getBankConfig(string $bankId)

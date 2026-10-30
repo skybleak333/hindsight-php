@@ -7,6 +7,7 @@ namespace Fedoseev\Hindsight\Laravel\Ai;
 use Closure;
 use Fedoseev\Hindsight\Budget;
 use Fedoseev\Hindsight\Exceptions\HindsightException;
+use Fedoseev\Hindsight\Exceptions\NotFoundException;
 use Fedoseev\Hindsight\Hindsight;
 use Fedoseev\Hindsight\TagsMatch;
 use Laravel\Ai\Gateway\StepResponse;
@@ -19,19 +20,24 @@ use Laravel\Ai\Responses\Data\FinishReason;
  * Long-term memory for a Laravel AI SDK agent.
  *
  * Before the first generation step it recalls memories relevant to the user's message and adds them to the
- * agent's instructions. After the final step it retains the exchange, so later conversations can recall it.
+ * agent's instructions. After the step that ends the run it retains the exchange, so later conversations can
+ * recall it.
  *
  *     public function middleware(): array
  *     {
  *         return [Memory::bank("user-{$this->user->id}")];
  *     }
  *
- * Memory is best effort: when Hindsight is unreachable or answers with an error, the exception is reported
- * through Laravel's exception handler and the agent runs without memory. Call throwOnError() to fail instead.
+ * Memory is best effort: when Hindsight is unreachable, slow or answers with an error, the exception is
+ * reported through Laravel's exception handler and the agent runs without memory. Call throwOnError() to fail
+ * instead.
  */
 final class Memory
 {
     public const DEFAULT_CONTEXT = 'Conversation between a user and an AI assistant';
+
+    /** Seconds a recall or an async retain may take before the agent goes on without memory. */
+    public const DEFAULT_TIMEOUT = 10.0;
 
     private bool $recall = true;
 
@@ -51,6 +57,8 @@ final class Memory
 
     private bool $async = true;
 
+    private ?float $timeout = null;
+
     private ?string $context = self::DEFAULT_CONTEXT;
 
     private ?string $documentId = null;
@@ -59,8 +67,13 @@ final class Memory
 
     private ?Hindsight $client = null;
 
-    /** The memories recalled for the current run, re-applied to every step after the first. */
+    /** The memories recalled for the run in $memoriesRun, added to every step of that run. */
     private ?string $memories = null;
+
+    private ?string $memoriesRun = null;
+
+    /** The run whose exchange was already retained, so a step that is generated twice is stored once. */
+    private ?string $retainedRun = null;
 
     public function __construct(private readonly string $bankId) {}
 
@@ -72,9 +85,12 @@ final class Memory
     /**
      * Recall only memories with these tags, and tag the memories this agent retains.
      *
+     * Untagged memories are left out by default, so one user's tags never pull in memories stored without
+     * tags. Pass TagsMatch::Any to include untagged memories too, e.g. knowledge shared by every user.
+     *
      * @param  list<string>  $tags
      */
-    public function tags(array $tags, TagsMatch|string $match = TagsMatch::Any): self
+    public function tags(array $tags, TagsMatch|string $match = TagsMatch::AnyStrict): self
     {
         $this->tags = $tags;
         $this->tagsMatch = $match;
@@ -140,6 +156,17 @@ final class Memory
         return $this;
     }
 
+    /**
+     * Seconds to wait for Hindsight before going on without memory. Defaults to 10 for recall and async
+     * retains, and to the client's own timeout for synchronous retains, which wait for the server's LLM.
+     */
+    public function timeout(float $seconds): self
+    {
+        $this->timeout = $seconds;
+
+        return $this;
+    }
+
     public function throwOnError(bool $throw = true): self
     {
         $this->throw = $throw;
@@ -160,9 +187,15 @@ final class Memory
     public function handle(PendingStep $step, Closure $next): mixed
     {
         $message = self::latestUserMessage($step->messages);
+        $run = $step->invocationId;
 
-        if ($step->isFirstStep()) {
+        // State is kept per run, so an instance shared between runs never hands one run's memories to another.
+        if ($step->isFirstStep() && ($run === null || $run !== $this->memoriesRun)) {
             $this->memories = $this->recall && $message !== '' ? $this->recallFor($message) : null;
+            $this->memoriesRun = $run;
+        } elseif ($run !== $this->memoriesRun) {
+            $this->memories = null;
+            $this->memoriesRun = $run;
         }
 
         if ($this->memories !== null) {
@@ -172,10 +205,13 @@ final class Memory
         $result = $next($step);
 
         if ($this->retain && $message !== '' && $result instanceof StepResult) {
-            $result->then(function (StepResponse $response) use ($step, $message): void {
-                if (self::endsTheRun($step, $response)) {
-                    $this->retainExchange($message, $response->text);
+            $result->then(function (StepResponse $response) use ($message, $run): void {
+                if (! self::endsTheRun($response) || ($run !== null && $run === $this->retainedRun)) {
+                    return;
                 }
+
+                $this->retainedRun = $run;
+                $this->retainExchange($message, $response->text);
             });
         }
 
@@ -185,7 +221,7 @@ final class Memory
     private function recallFor(string $message): ?string
     {
         try {
-            $memories = $this->client()->recall(
+            $memories = $this->client($this->timeout ?? self::DEFAULT_TIMEOUT)->recall(
                 $this->bankId,
                 $message,
                 types: $this->types,
@@ -194,6 +230,13 @@ final class Memory
                 tags: $this->tags,
                 tagsMatch: $this->tagsMatch,
             );
+        } catch (NotFoundException $exception) {
+            // Reads of a bank nobody has written to yet answer 404: a new user simply has no memories.
+            if (! self::isMissingBank($exception, $this->bankId)) {
+                $this->handleError($exception);
+            }
+
+            return null;
         } catch (HindsightException $exception) {
             $this->handleError($exception);
 
@@ -210,7 +253,7 @@ final class Memory
     private function retainExchange(string $message, string $answer): void
     {
         try {
-            $this->client()->retain(
+            $this->client($this->timeout ?? ($this->async ? self::DEFAULT_TIMEOUT : null))->retain(
                 $this->bankId,
                 "USER: {$message}\nASSISTANT: {$answer}",
                 context: $this->context,
@@ -224,6 +267,14 @@ final class Memory
         }
     }
 
+    /**
+     * A 404 about this bank, as opposed to one from a wrong URL or a proxy.
+     */
+    public static function isMissingBank(NotFoundException $exception, string $bankId): bool
+    {
+        return preg_match('/(?<![\w-])'.preg_quote($bankId, '/').'(?![\w-])/', $exception->getMessage()) === 1;
+    }
+
     private function handleError(HindsightException $exception): void
     {
         if ($this->throw) {
@@ -233,21 +284,25 @@ final class Memory
         report($exception);
     }
 
-    private function client(): Hindsight
+    private function client(?float $timeout): Hindsight
     {
-        return $this->client ??= app(Hindsight::class);
+        $client = $this->client ??= app(Hindsight::class);
+
+        return $timeout === null ? $client : $client->withTimeout($timeout);
     }
 
     /**
-     * A step ends the run when the model answers without asking for tools, or when no steps are left.
+     * Whether the loop ends the run after this step, by the same rule as Laravel AI's TextGenerationLoop:
+     * no tool runs (the model asked for none, or did not finish with tool calls) and the model is not
+     * continuing. A step that asks for tools is never stored, even on the last allowed step, because a tool
+     * that needs approval pauses the run there, and the resumed run would store the exchange again.
      */
-    private static function endsTheRun(PendingStep $step, StepResponse $response): bool
+    private static function endsTheRun(StepResponse $response): bool
     {
-        if ($response->text === '' || $response->pendingApprovals !== []) {
-            return false;
-        }
-
-        return ($response->toolCalls === [] && $response->finishReason !== FinishReason::Continue) || $step->isFinalStep;
+        return $response->text !== ''
+            && $response->pendingApprovals === []
+            && $response->finishReason !== FinishReason::Continue
+            && ($response->toolCalls === [] || $response->finishReason !== FinishReason::ToolCalls);
     }
 
     /**

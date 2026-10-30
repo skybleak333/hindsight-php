@@ -87,7 +87,7 @@ foreach ($memories as $memory) {
 echo $hindsight->reflect('my-bank', 'Tell me about Alice');
 ```
 
-Banks are created on first use. Method names and arguments follow the official [Python and TypeScript clients](https://hindsight.vectorize.io/sdks/python), so the Hindsight documentation applies directly.
+You do not need to create a bank first: retain and other writes create a missing bank with default settings. Reads of a bank nobody has written to answer `404`, and the agent middleware and tools treat that as "no memories yet". Method names and arguments follow the official [Python and TypeScript clients](https://hindsight.vectorize.io/sdks/python), so the Hindsight documentation applies directly.
 
 ### Retain
 
@@ -120,7 +120,7 @@ $response = $hindsight->retain('support', $transcript, async: true);
 $operation = $hindsight->waitForOperation('support', $response->operationId, timeout: 60);
 ```
 
-`waitForOperation()` throws `OperationFailedException` if the operation fails and `TimeoutException` if it is still running after the timeout.
+`waitForOperation()` throws `OperationFailedException` if the operation fails and `TimeoutException` if it is still running after the timeout. When an async batch mixes items with different retain strategies, the server splits it into several operations: then `operationId` is `null` and the IDs are in `operationIds`.
 
 ### Recall
 
@@ -170,7 +170,7 @@ $answer->structuredOutput; // ['city' => 'Rotterdam']
 
 | Area | Methods |
 |---|---|
-| Banks | `listBanks`, `createBank`, `updateBank`, `getBankProfile`, `getBankStats`, `deleteBank`, `getBankConfig`, `updateBankConfig`, `resetBankConfig` |
+| Banks | `listBanks`, `createBank`, `updateBank`, `getBankStats`, `deleteBank`, `getBankConfig`, `updateBankConfig`, `resetBankConfig` |
 | Memories | `listMemories`, `getMemory`, `clearMemories` |
 | Documents | `listDocuments`, `getDocument`, `deleteDocument` |
 | Directives | `createDirective`, `listDirectives`, `getDirective`, `updateDirective`, `deleteDirective` |
@@ -178,16 +178,25 @@ $answer->structuredOutput; // ['city' => 'Rotterdam']
 | Operations | `getOperation`, `listOperations`, `cancelOperation`, `waitForOperation` |
 | Server | `health`, `version` |
 
+Bank settings such as the reflect mission and disposition live in the bank configuration since Hindsight 1.1 (the old profile endpoints answer `410 Gone`):
+
+```php
+$hindsight->createBank('support', name: 'Support', reflectMission: 'Help customers of an online shop.');
+$hindsight->updateBankConfig('support', ['disposition_empathy' => 5]);
+```
+
 For any endpoint without its own method, use `request()`. It returns the decoded JSON:
 
 ```php
 $tags = $hindsight->request('GET', '/v1/default/banks/support/tags', query: ['limit' => 50]);
 ```
 
-The client accepts any [PSR-18](https://www.php-fig.org/psr/psr-18/) HTTP client. Without one it uses Guzzle:
+The client accepts any [PSR-18](https://www.php-fig.org/psr/psr-18/) HTTP client. Without one it uses Guzzle with a 120-second timeout, because synchronous retain and reflect wait for the server's LLM. For calls on a user's request path, take a copy with a shorter timeout:
 
 ```php
 $hindsight = new Hindsight('https://api.hindsight.vectorize.io', apiKey: $key, httpClient: $myPsr18Client);
+
+$fast = $hindsight->withTimeout(5); // a client you passed in keeps its own timeout
 ```
 
 ### Typos in options do not go unnoticed
@@ -255,15 +264,15 @@ To add retries, a proxy or logging, bind your own PSR-18 client as `hindsight.ht
 
    The memories stay in the instructions for every step of the run, including the steps after tool calls.
 
-2. **After the final step**, it retains the exchange as `USER: … ASSISTANT: …`, the same format as Hindsight's own LiteLLM integration. Steps that only call tools are not stored. Streamed answers are stored once the stream has been read.
+2. **After the step that ends the run**, it retains the exchange as a short transcript: a `USER:` line with the message and an `ASSISTANT:` line with the answer. It uses the same rule as the Laravel AI loop to decide that a run has ended. A step that asks for tools is never stored, so a run that pauses for tool approval is stored once, when it finishes. Streamed answers are stored once the stream has been read. For agents with structured output, the `ASSISTANT:` line is the JSON the model returned.
 
 ```php
 public function middleware(): array
 {
     return [
-        Memory::bank("user-{$this->user->id}")
+        Memory::bank('support')
+            ->tags(["user:{$this->user->id}"])           // only this user's memories, and tag what is stored
             ->recallBudget(Budget::Mid, maxTokens: 2048) // default: Low, 1024 tokens
-            ->tags(["team:{$this->user->team_id}"])      // scope recall and tag what is stored
             ->document("conversation-{$this->conversationId}") // append each exchange to one document
             ->context('Support chat on example.com'),     // helps the server extract better facts
     ];
@@ -273,15 +282,16 @@ public function middleware(): array
 | Method | What it does |
 |---|---|
 | `recallBudget($budget, $maxTokens, $types)` | How hard recall searches and how much it may add. Default `Budget::Low` and 1,024 tokens, to keep latency down. |
-| `tags($tags, $match)` | Recall only these tags and tag the stored exchanges. |
+| `tags($tags, $match)` | Recall only memories with these tags and tag the stored exchanges. Untagged memories are left out by default (`TagsMatch::AnyStrict`), so a bank shared by many users does not mix them up. Pass `TagsMatch::Any` to include untagged memories, such as knowledge every user should get. |
 | `document($id)` | Append every exchange to one document (`update_mode: append`) instead of storing each separately. |
 | `context($text)` | Describe the source of the conversations. |
 | `withoutRecall()` / `withoutRetain()` | Use only one half. |
 | `retainSynchronously()` | Wait for fact extraction. By default retains are async, so the user does not wait. |
+| `timeout($seconds)` | How long to wait for Hindsight. Default 10 seconds for recall and async retains; a synchronous retain uses the client's timeout. |
 | `throwOnError()` | Fail the run when Hindsight fails. See below. |
 | `using($client)` | Use a specific client instead of the container's. |
 
-Memory is best effort by default. If Hindsight is down or answers with an error, the middleware reports the exception through Laravel's exception handler and the agent answers without memory. Call `throwOnError()` if a run without memory is worse than no run.
+Memory is best effort by default. If Hindsight is down, too slow or answers with an error, the middleware reports the exception through Laravel's exception handler and the agent answers without memory. A hung server costs at most the 10-second timeout, not the client's 120 seconds. Call `throwOnError()` if a run without memory is worse than no run.
 
 ### The tools
 
@@ -304,7 +314,7 @@ public function tools(): iterable
 }
 ```
 
-Each tool takes `tags()`, `using()` and `named()` (to rename it, for example when an agent has tools for two banks). `Recall` and `Reflect` take `budget()`. When Hindsight fails, a tool returns the error to the model instead of ending the run, so the agent can still answer.
+Each tool takes `tags()` (strict by default, like the middleware), `timeout()`, `using()` and `named()` (to rename it, for example when an agent has tools for two banks). `Recall` and `Reflect` take `budget()`. The default timeouts are 15 seconds for `Recall` and `Retain` and 60 for `Reflect`, which runs the server's LLM. When Hindsight fails, a tool returns the error to the model instead of ending the run, so the agent can still answer.
 
 The middleware and the tools work together. A common setup is the middleware for automatic memory plus `Retain` for facts the agent should keep on purpose.
 
@@ -314,7 +324,8 @@ Every exception implements `Fedoseev\Hindsight\Exceptions\HindsightException`.
 
 | Exception | When |
 |---|---|
-| `ConnectionException` | The server could not be reached. |
+| `ConfigurationException` | The URL is not an http(s) URL. Thrown when the client is created. |
+| `ConnectionException` | The server could not be reached or did not answer in time. |
 | `AuthenticationException` | 401 or 403: the API key is missing or wrong. |
 | `NotFoundException` | 404: the bank, document or other resource does not exist. |
 | `ValidationException` | 422: the server rejected the request. `errors()` lists the fields. |

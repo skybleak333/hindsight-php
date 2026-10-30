@@ -6,7 +6,9 @@ namespace Fedoseev\Hindsight\Laravel\Ai\Tools;
 
 use Fedoseev\Hindsight\Budget;
 use Fedoseev\Hindsight\Exceptions\HindsightException;
+use Fedoseev\Hindsight\Exceptions\NotFoundException;
 use Fedoseev\Hindsight\Hindsight;
+use Fedoseev\Hindsight\Laravel\Ai\Memory;
 use Fedoseev\Hindsight\TagsMatch;
 use Laravel\Ai\Contracts\Tool;
 use Laravel\Ai\Tools\Request;
@@ -27,6 +29,8 @@ abstract class MemoryTool implements Tool
 
     protected ?Hindsight $client = null;
 
+    protected ?float $timeout = null;
+
     final public function __construct(protected readonly string $bankId) {}
 
     public static function bank(string $bankId): static
@@ -37,9 +41,11 @@ abstract class MemoryTool implements Tool
     /**
      * Limit the tool to memories with these tags. Retain also tags what it stores with them.
      *
+     * Untagged memories are left out by default; pass TagsMatch::Any to include them.
+     *
      * @param  list<string>  $tags
      */
-    public function tags(array $tags, TagsMatch|string $match = TagsMatch::Any): static
+    public function tags(array $tags, TagsMatch|string $match = TagsMatch::AnyStrict): static
     {
         $this->tags = $tags;
         $this->tagsMatch = $match;
@@ -53,6 +59,16 @@ abstract class MemoryTool implements Tool
     public function named(string $name): static
     {
         $this->name = $name;
+
+        return $this;
+    }
+
+    /**
+     * Seconds to wait for Hindsight before the tool tells the model that memory is unavailable.
+     */
+    public function timeout(float $seconds): static
+    {
+        $this->timeout = $seconds;
 
         return $this;
     }
@@ -73,6 +89,14 @@ abstract class MemoryTool implements Tool
     {
         try {
             return $this->run($request);
+        } catch (NotFoundException $exception) {
+            if (Memory::isMissingBank($exception, $this->bankId)) {
+                return $this->nothingStored();
+            }
+
+            report($exception);
+
+            return "Memory is unavailable: {$exception->getMessage()}";
         } catch (HindsightException $exception) {
             report($exception);
 
@@ -83,10 +107,26 @@ abstract class MemoryTool implements Tool
 
     abstract protected function defaultName(): string;
 
+    /**
+     * What the model is told when the bank does not exist yet because nothing was stored in it.
+     */
+    protected function nothingStored(): string
+    {
+        return 'There is nothing in memory yet.';
+    }
+
     abstract protected function run(Request $request): string;
+
+    /**
+     * How long the tool waits when no timeout() was set; null keeps the client's own timeout.
+     */
+    abstract protected function defaultTimeout(): ?float;
 
     protected function client(): Hindsight
     {
-        return $this->client ??= app(Hindsight::class);
+        $client = $this->client ??= app(Hindsight::class);
+        $timeout = $this->timeout ?? $this->defaultTimeout();
+
+        return $timeout === null ? $client : $client->withTimeout($timeout);
     }
 }

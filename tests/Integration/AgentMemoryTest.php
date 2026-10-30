@@ -10,6 +10,7 @@ use Fedoseev\Hindsight\Laravel\Ai\Memory;
 use Fedoseev\Hindsight\Laravel\Ai\Tools\Recall;
 use Fedoseev\Hindsight\Laravel\HindsightServiceProvider;
 use Fedoseev\Hindsight\Tests\Laravel\Fixtures\SupportAgent;
+use Illuminate\Support\Facades\Exceptions;
 use Laravel\Ai\AiServiceProvider;
 use Laravel\Ai\PendingStep;
 use Laravel\Ai\Responses\Data\ToolCall;
@@ -62,6 +63,18 @@ final class AgentMemoryTest extends TestCase
         $this->assertIsString($instructions);
         $this->assertStringContainsString('# Relevant Memories', $instructions);
         $this->assertStringContainsString('teal', $instructions);
+    }
+
+    public function test_the_first_conversation_of_a_new_user_is_not_an_error(): void
+    {
+        Exceptions::fake();
+        $bank = $this->newBank();
+        SupportAgent::fake(['Welcome!']);
+
+        (new SupportAgent([Memory::bank($bank)->retainSynchronously()]))->prompt('Hi, I am new here.');
+
+        Exceptions::assertNothingReported();
+        $this->assertStringContainsString('I am new here', implode("\n", $this->hindsight->recall($bank, 'new here')->texts()));
     }
 
     public function test_the_recall_tool_reads_the_real_bank(): void

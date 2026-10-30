@@ -36,6 +36,16 @@ final class Recall extends MemoryTool
         ];
     }
 
+    protected function defaultTimeout(): float
+    {
+        return 15.0;
+    }
+
+    protected function nothingStored(): string
+    {
+        return 'No relevant memories found.';
+    }
+
     protected function defaultName(): string
     {
         return 'recall_memory';

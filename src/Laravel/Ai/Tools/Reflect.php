@@ -35,6 +35,12 @@ final class Reflect extends MemoryTool
         ];
     }
 
+    protected function defaultTimeout(): float
+    {
+        // Reflect runs an agent loop with the server's LLM, which takes longer than a search.
+        return 60.0;
+    }
+
     protected function defaultName(): string
     {
         return 'reflect_memory';

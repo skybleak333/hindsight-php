@@ -6,6 +6,7 @@ namespace Fedoseev\Hindsight\Tests\Unit;
 
 use Fedoseev\Hindsight\Exceptions\ApiException;
 use Fedoseev\Hindsight\Exceptions\AuthenticationException;
+use Fedoseev\Hindsight\Exceptions\ConfigurationException;
 use Fedoseev\Hindsight\Exceptions\ConnectionException;
 use Fedoseev\Hindsight\Exceptions\HindsightException;
 use Fedoseev\Hindsight\Exceptions\NotFoundException;
@@ -17,6 +18,7 @@ use Fedoseev\Hindsight\Tests\Support\FakeHttpClient;
 use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Psr7\Request;
 use GuzzleHttp\Psr7\Response;
+use PHPUnit\Framework\Attributes\DataProvider;
 
 final class TransportTest extends ClientTestCase
 {
@@ -116,12 +118,66 @@ final class TransportTest extends ClientTestCase
         $this->assertSame([], $logger->records);
     }
 
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function invalidUrls(): iterable
+    {
+        yield 'no scheme' => ['localhost:8888'];
+        yield 'not http' => ['ftp://hindsight.test'];
+        yield 'space in the host' => ['http://exa mple'];
+        yield 'empty' => [''];
+    }
+
+    #[DataProvider('invalidUrls')]
+    public function test_a_malformed_url_is_rejected_up_front(string $url): void
+    {
+        $this->checkContract = false;
+
+        $this->expectException(ConfigurationException::class);
+        $this->expectExceptionMessage('The Hindsight URL must be an http or https URL');
+
+        new Hindsight($url);
+    }
+
+    public function test_with_timeout_builds_a_client_with_a_shorter_timeout(): void
+    {
+        $this->checkContract = false;
+        $client = new Hindsight('http://hindsight.test', timeout: 120);
+
+        $short = $client->withTimeout(5);
+
+        $this->assertNotSame($client, $short);
+        $this->assertSame(5.0, $this->guzzleOption($short, 'timeout'));
+        $this->assertSame(5.0, $this->guzzleOption($short, 'connect_timeout'));
+        $this->assertSame(120.0, $this->guzzleOption($client, 'timeout'));
+    }
+
+    public function test_with_timeout_keeps_a_client_you_passed_in(): void
+    {
+        $this->assertSame($this->hindsight, $this->hindsight->withTimeout(5));
+    }
+
+    public function test_long_error_bodies_are_shortened_without_mbstring(): void
+    {
+        $this->http->respond(new Response(500, ['Content-Type' => 'text/plain'], str_repeat('Ошибка ', 100)));
+
+        try {
+            $this->hindsight->health();
+            $this->fail('Expected an ApiException.');
+        } catch (ApiException $exception) {
+            $this->assertStringEndsWith('...', $exception->getMessage());
+            $this->assertLessThan(340, mb_strlen($exception->getMessage()));
+            $this->assertTrue(mb_check_encoding($exception->getMessage(), 'UTF-8'));
+        }
+    }
+
     public function test_not_found_errors_carry_the_server_message(): void
     {
         $this->http->json(['detail' => 'Bank not found: missing'], 404);
 
         try {
-            $this->hindsight->getBankProfile('missing');
+            $this->hindsight->getBankStats('missing');
             $this->fail('Expected a NotFoundException.');
         } catch (NotFoundException $exception) {
             $this->assertSame('Hindsight API error 404: Bank not found: missing', $exception->getMessage());
@@ -217,5 +273,15 @@ final class TransportTest extends ClientTestCase
         $this->http->respond(new Response(204));
 
         $this->assertNull($this->hindsight->request('DELETE', '/v1/default/banks/b1/webhooks/w1'));
+    }
+
+    private function guzzleOption(Hindsight $client, string $option): mixed
+    {
+        $transport = (new \ReflectionProperty(Hindsight::class, 'transport'))->getValue($client);
+        $http = (new \ReflectionProperty($transport, 'http'))->getValue($transport);
+
+        $this->assertInstanceOf(\GuzzleHttp\Client::class, $http);
+
+        return $http->getConfig($option);
     }
 }

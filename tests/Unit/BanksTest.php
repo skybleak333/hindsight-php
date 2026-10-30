@@ -17,7 +17,7 @@ final class BanksTest extends ClientTestCase
     {
         $this->respond('PUT', '/v1/default/banks/support', self::PROFILE);
 
-        $profile = $this->hindsight->createBank('support', name: 'Support agent', mission: 'Remember customer preferences.', options: [
+        $profile = $this->hindsight->createBank('support', name: 'Support agent', reflectMission: 'Remember customer preferences.', options: [
             'disposition_empathy' => 4,
             'enable_observations' => false,
         ]);
@@ -25,7 +25,7 @@ final class BanksTest extends ClientTestCase
         $this->assertSent('PUT', '/v1/default/banks/support');
         $this->assertSame([
             'name' => 'Support agent',
-            'mission' => 'Remember customer preferences.',
+            'reflect_mission' => 'Remember customer preferences.',
             'disposition_empathy' => 4,
             'enable_observations' => false,
         ], $this->http->lastJson());
@@ -45,10 +45,10 @@ final class BanksTest extends ClientTestCase
     {
         $this->respond('PATCH', '/v1/default/banks/support', self::PROFILE);
 
-        $this->hindsight->updateBank('support', mission: 'Remember customer preferences.');
+        $this->hindsight->updateBank('support', reflectMission: 'Remember customer preferences.');
 
         $this->assertSent('PATCH', '/v1/default/banks/support');
-        $this->assertSame(['mission' => 'Remember customer preferences.'], $this->http->lastJson());
+        $this->assertSame(['reflect_mission' => 'Remember customer preferences.'], $this->http->lastJson());
     }
 
     public function test_list_get_stats_and_delete(): void
@@ -56,10 +56,6 @@ final class BanksTest extends ClientTestCase
         $this->respond('GET', '/v1/default/banks', ['banks' => [['bank_id' => 'support', 'disposition' => self::PROFILE['disposition'], 'matched_aliases' => []]], 'total' => 1, 'limit' => 10, 'offset' => 0]);
         $this->assertSame('support', $this->hindsight->listBanks(search: 'sup', limit: 10)['banks'][0]['bank_id']);
         $this->assertSent('GET', '/v1/default/banks?q=sup&limit=10');
-
-        $this->respond('GET', '/v1/default/banks/support/profile', self::PROFILE);
-        $this->assertSame('Support agent', $this->hindsight->getBankProfile('support')['name']);
-        $this->assertSent('GET', '/v1/default/banks/support/profile');
 
         $this->http->json(['bank_id' => 'support', 'total_nodes' => 10]);
         $this->hindsight->getBankStats('support');

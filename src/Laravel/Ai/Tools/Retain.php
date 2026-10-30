@@ -38,6 +38,12 @@ final class Retain extends MemoryTool
         ];
     }
 
+    protected function defaultTimeout(): ?float
+    {
+        // A synchronous retain waits for fact extraction by the server's LLM.
+        return $this->async ? 15.0 : null;
+    }
+
     protected function defaultName(): string
     {
         return 'retain_memory';

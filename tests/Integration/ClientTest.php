@@ -7,6 +7,7 @@ namespace Fedoseev\Hindsight\Tests\Integration;
 use Fedoseev\Hindsight\Exceptions\ApiException;
 use Fedoseev\Hindsight\Exceptions\NotFoundException;
 use Fedoseev\Hindsight\Hindsight;
+use Fedoseev\Hindsight\Laravel\Ai\Memory;
 use Fedoseev\Hindsight\TagsMatch;
 use Fedoseev\Hindsight\Tests\Support\ArrayLogger;
 use Fedoseev\Hindsight\Tests\Support\OpenApiContract;
@@ -42,14 +43,24 @@ final class ClientTest extends TestCase
         $this->assertIsArray($this->hindsight->health());
     }
 
+    public function test_recall_on_a_bank_nobody_wrote_to(): void
+    {
+        // The docs say reads of a missing bank answer 404; the middleware relies on recognising that answer.
+        try {
+            $this->assertTrue($this->hindsight->recall($this->bank, 'anything')->isEmpty());
+        } catch (NotFoundException $exception) {
+            $this->assertTrue(Memory::isMissingBank($exception, $this->bank), $exception->getMessage());
+        }
+    }
+
     public function test_bank_lifecycle(): void
     {
-        $profile = $this->hindsight->createBank($this->bank, name: 'PHP client test', mission: 'Remember test facts.');
+        $profile = $this->hindsight->createBank($this->bank, name: 'PHP client test', reflectMission: 'Remember test facts.');
         OpenApiContract::instance()->assertResponse('PUT', "/v1/default/banks/{$this->bank}", $profile);
         $this->assertSame('PHP client test', $profile['name']);
 
-        $this->hindsight->updateBank($this->bank, mission: 'Remember updated test facts.');
-        $this->assertSame('Remember updated test facts.', $this->hindsight->getBankProfile($this->bank)['mission']);
+        $this->hindsight->updateBank($this->bank, reflectMission: 'Remember updated test facts.');
+        $this->assertSame('Remember updated test facts.', $this->hindsight->getBankConfig($this->bank)['config']['reflect_mission'] ?? null);
 
         $banks = $this->hindsight->listBanks(search: $this->bank);
         $this->assertContains($this->bank, array_column($banks['banks'], 'bank_id'));
@@ -57,6 +68,9 @@ final class ClientTest extends TestCase
         $config = $this->hindsight->updateBankConfig($this->bank, ['retain_chunk_size' => 1500]);
         $this->assertSame(1500, $config['overrides']['retain_chunk_size'] ?? null);
         $this->assertArrayNotHasKey('retain_chunk_size', $this->hindsight->resetBankConfig($this->bank)['overrides']);
+
+        $stats = $this->hindsight->getBankStats($this->bank);
+        OpenApiContract::instance()->assertResponse('GET', "/v1/default/banks/{$this->bank}/stats", $stats);
 
         $this->assertTrue($this->hindsight->deleteBank($this->bank)['success']);
     }

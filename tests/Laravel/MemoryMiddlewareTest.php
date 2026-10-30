@@ -7,6 +7,7 @@ namespace Fedoseev\Hindsight\Tests\Laravel;
 use Closure;
 use Fedoseev\Hindsight\Budget;
 use Fedoseev\Hindsight\Exceptions\ConnectionException;
+use Fedoseev\Hindsight\Exceptions\NotFoundException;
 use Fedoseev\Hindsight\Laravel\Ai\Memory;
 use Fedoseev\Hindsight\Tests\Laravel\Fixtures\SupportAgent;
 use GuzzleHttp\Exception\ConnectException;
@@ -158,6 +159,34 @@ final class MemoryMiddlewareTest extends TestCase
         Exceptions::assertReportedCount(2);
     }
 
+    public function test_a_new_user_without_a_bank_is_not_an_error(): void
+    {
+        // Hindsight answers reads of a bank nobody wrote to with 404; the first retain creates it.
+        Exceptions::fake();
+        SupportAgent::fake(['Welcome!']);
+        $this->http->json(['detail' => "Bank 'user-7' not found"], 404);
+        $this->queueRetain('user-7');
+
+        $this->agent(Memory::bank('user-7')->throwOnError())->prompt('Hi, I am new here');
+
+        Exceptions::assertNothingReported();
+        $this->assertSame(['You are a support agent.'], $this->instructions);
+        $this->assertSame(['POST /v1/default/banks/user-7/memories/recall', 'POST /v1/default/banks/user-7/memories'], $this->sentPaths());
+    }
+
+    public function test_a_404_from_somewhere_else_is_still_reported(): void
+    {
+        // e.g. HINDSIGHT_URL points at the wrong service, which answers FastAPI's generic 404.
+        Exceptions::fake();
+        SupportAgent::fake(['Hi.']);
+        $this->http->json(['detail' => 'Not Found'], 404);
+        $this->queueRetain('user-7');
+
+        $this->agent(Memory::bank('user-7'))->prompt('Hi');
+
+        Exceptions::assertReported(NotFoundException::class);
+    }
+
     public function test_errors_can_be_thrown_instead(): void
     {
         SupportAgent::fake(['unused']);
@@ -181,17 +210,6 @@ final class MemoryMiddlewareTest extends TestCase
         }
 
         $this->assertSame("USER: Does streaming work?\nASSISTANT: Streaming works fine.", $this->sentJson(1)['items'][0]['content']);
-    }
-
-    public function test_memories_from_an_earlier_turn_are_not_retained_again(): void
-    {
-        SupportAgent::fake(['Pro.']);
-        $this->queueRecall([['id' => 'f1', 'text' => 'Alice is on the Pro plan']]);
-        $this->queueRetain();
-
-        $this->agent(Memory::bank('b'))->prompt('Which plan am I on?');
-
-        $this->assertStringNotContainsString('Relevant Memories', $this->sentJson(1)['items'][0]['content']);
     }
 
     /**
