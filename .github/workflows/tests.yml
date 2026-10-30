@@ -1,0 +1,156 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    # Weekly, to notice when a new Hindsight or Laravel AI SDK release changes something.
+    - cron: '0 6 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: PHP ${{ matrix.php }}, Laravel ${{ matrix.laravel }}${{ matrix.stability == 'prefer-lowest' && ', lowest deps' || '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.3', '8.4', '8.5']
+        laravel: ['12', '13']
+        stability: ['prefer-stable']
+        include:
+          - laravel: '12'
+            testbench: '^10.0'
+          - laravel: '13'
+            testbench: '^11.0'
+          - php: '8.3'
+            laravel: '12'
+            testbench: '^10.0'
+            stability: 'prefer-lowest'
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+
+      - name: Install dependencies
+        run: |
+          composer require --dev "orchestra/testbench:${{ matrix.testbench }}" --no-update --no-interaction
+          composer update --${{ matrix.stability }} --prefer-dist --no-interaction --no-progress
+
+      - name: Show versions
+        run: composer show | grep -E '^(guzzlehttp/guzzle|laravel/ai|laravel/framework|orchestra/testbench|phpunit/phpunit) '
+
+      - name: Run tests
+        run: vendor/bin/phpunit --testsuite unit,laravel
+
+  client-only:
+    # laravel/ai needs PHP 8.3, so on PHP 8.2 only the framework-agnostic client is tested.
+    name: PHP 8.2, client without Laravel
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          coverage: none
+
+      - name: Install dependencies
+        run: |
+          composer remove --dev laravel/ai orchestra/testbench --no-update --no-interaction
+          composer update --prefer-dist --no-interaction --no-progress
+
+      - name: Run tests
+        run: vendor/bin/phpunit --testsuite unit
+
+  static-analysis:
+    name: PHPStan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+
+      - name: Install dependencies
+        run: composer update --prefer-dist --no-interaction --no-progress
+
+      - name: Run PHPStan
+        run: vendor/bin/phpstan analyse --no-progress
+
+  integration:
+    name: Real Hindsight ${{ matrix.hindsight }} server
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    strategy:
+      fail-fast: false
+      matrix:
+        hindsight: ['1.1.0']
+
+    env:
+      # No LLM: retain stores chunks without fact extraction, recall works, reflect answers 400.
+      # Everything runs on the runner, so the job needs no API keys and costs nothing.
+      HINDSIGHT_API_LLM_PROVIDER: none
+      HINDSIGHT_API_EMBEDDINGS_PROVIDER: onnx
+      HINDSIGHT_API_RERANKER_PROVIDER: rrf
+      HINDSIGHT_API_HOST: 127.0.0.1
+      HINDSIGHT_API_PORT: '8888'
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Cache the embedding model
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: huggingface-multilingual-e5-small
+
+      - name: Install Hindsight
+        run: python -m pip install --quiet "hindsight-api-slim[local-onnx,embedded-db]==${{ matrix.hindsight }}"
+
+      - name: Start Hindsight
+        run: |
+          nohup hindsight-api > hindsight.log 2>&1 &
+          for attempt in $(seq 1 150); do
+            if curl -sf http://127.0.0.1:8888/health > /dev/null; then break; fi
+            sleep 2
+          done
+          curl -sf http://127.0.0.1:8888/version
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+
+      - name: Install dependencies
+        run: composer update --prefer-dist --no-interaction --no-progress
+
+      - name: Run integration tests
+        env:
+          HINDSIGHT_TEST_URL: http://127.0.0.1:8888
+          HINDSIGHT_TEST_REQUIRED: '1'
+        run: vendor/bin/phpunit --testsuite integration
+
+      - name: Hindsight log
+        if: always()
+        run: tail -n 200 hindsight.log
