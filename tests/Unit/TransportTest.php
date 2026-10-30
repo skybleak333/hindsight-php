@@ -80,6 +80,16 @@ final class TransportTest extends ClientTestCase
         $this->assertStringContainsString('Алиса любит чай 🍵', (string) $this->http->lastRequest()->getBody());
     }
 
+    public function test_invalid_utf8_does_not_break_the_request(): void
+    {
+        $this->respond('POST', '/v1/default/banks/b1/memories', ['success' => true, 'bank_id' => 'b1', 'items_count' => 1, 'async' => false]);
+
+        // "Привет" cut in the middle of a two-byte character, as substr() on user input does.
+        $this->hindsight->retain('b1', substr('Привет', 0, 5));
+
+        $this->assertSame('Пр'."\u{FFFD}", $this->http->lastJson()['items'][0]['content'] ?? null);
+    }
+
     public function test_not_found_errors_carry_the_server_message(): void
     {
         $this->http->json(['detail' => 'Bank not found: missing'], 404);

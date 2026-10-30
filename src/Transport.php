@@ -62,7 +62,11 @@ final class Transport
         }
 
         if ($body !== null) {
-            $json = json_encode($body === [] ? new stdClass : $body, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION);
+            // Invalid UTF-8, e.g. a truncated multibyte character in user input, becomes U+FFFD instead of failing the call.
+            $json = json_encode(
+                $body === [] ? new stdClass : $body,
+                JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION | JSON_INVALID_UTF8_SUBSTITUTE,
+            );
 
             $request = $request
                 ->withHeader('Content-Type', 'application/json')
