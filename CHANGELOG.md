@@ -2,7 +2,9 @@
 
 All notable changes to this package are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the package uses [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.1.0] - 2026-10-30
+
+First release. Tested against Hindsight 1.1.0, Laravel 12 and 13, and Laravel AI SDK 1.0 to 1.3.
 
 ### Added
 
@@ -16,3 +18,5 @@ All notable changes to this package are documented here. The format follows [Kee
 - `Recall`, `Retain` and `Reflect` tools for Laravel AI SDK agents.
 - `withTimeout()` for a copy of the client with a shorter timeout. The middleware and tools use short timeouts by default, so a hung server does not hold up an agent for two minutes.
 - `ConfigurationException` for a malformed URL, thrown when the client is created.
+
+[0.1.0]: https://github.com/skybleak333/hindsight-php/releases/tag/v0.1.0
