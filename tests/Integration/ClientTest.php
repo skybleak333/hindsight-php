@@ -53,6 +53,19 @@ final class ClientTest extends TestCase
         }
     }
 
+    public function test_the_retired_profile_endpoint_answers_410(): void
+    {
+        // Why the client has no getBankProfile(): since Hindsight 1.1 the server always refuses it.
+        $this->hindsight->createBank($this->bank);
+
+        try {
+            $this->hindsight->request('GET', "/v1/default/banks/{$this->bank}/profile");
+            $this->fail('The profile endpoint should be gone.');
+        } catch (ApiException $exception) {
+            $this->assertSame(410, $exception->statusCode);
+        }
+    }
+
     public function test_bank_lifecycle(): void
     {
         $profile = $this->hindsight->createBank($this->bank, name: 'PHP client test', reflectMission: 'Remember test facts.');

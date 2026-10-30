@@ -174,6 +174,19 @@ final class MemoryMiddlewareTest extends TestCase
         $this->assertSame(['POST /v1/default/banks/user-7/memories/recall', 'POST /v1/default/banks/user-7/memories'], $this->sentPaths());
     }
 
+    public function test_a_bank_id_that_appears_in_the_generic_message_is_not_mistaken_for_a_missing_bank(): void
+    {
+        // "Hindsight API error 404: Not Found" contains "404" and "Not"; only the server's detail counts.
+        Exceptions::fake();
+        SupportAgent::fake(['Hi.']);
+        $this->http->json(['detail' => 'Not Found'], 404);
+        $this->queueRetain('404');
+
+        $this->agent(Memory::bank('404'))->prompt('Hi');
+
+        Exceptions::assertReported(NotFoundException::class);
+    }
+
     public function test_a_404_from_somewhere_else_is_still_reported(): void
     {
         // e.g. HINDSIGHT_URL points at the wrong service, which answers FastAPI's generic 404.

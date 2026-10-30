@@ -31,6 +31,9 @@ use Laravel\Ai\Responses\Data\FinishReason;
  * Memory is best effort: when Hindsight is unreachable, slow or answers with an error, the exception is
  * reported through Laravel's exception handler and the agent runs without memory. Call throwOnError() to fail
  * instead.
+ *
+ * Create a new instance in middleware(), as above, and list it first, so it sees the step as the model
+ * finally answers it. One instance shared by runs that stream in parallel would mix up their memories.
  */
 final class Memory
 {
@@ -268,11 +271,16 @@ final class Memory
     }
 
     /**
-     * A 404 about this bank, as opposed to one from a wrong URL or a proxy.
+     * A 404 from Hindsight about this bank, as opposed to one from a wrong URL or a proxy.
+     *
+     * Only the server's own explanation is searched for the bank ID, never the whole message.
      */
     public static function isMissingBank(NotFoundException $exception, string $bankId): bool
     {
-        return preg_match('/(?<![\w-])'.preg_quote($bankId, '/').'(?![\w-])/', $exception->getMessage()) === 1;
+        $detail = is_array($exception->body) ? ($exception->body['detail'] ?? null) : null;
+
+        return is_string($detail)
+            && preg_match('/(?<![\w-])'.preg_quote($bankId, '/').'(?![\w-])/', $detail) === 1;
     }
 
     private function handleError(HindsightException $exception): void

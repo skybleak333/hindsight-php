@@ -291,7 +291,9 @@ public function middleware(): array
 | `throwOnError()` | Fail the run when Hindsight fails. See below. |
 | `using($client)` | Use a specific client instead of the container's. |
 
-Memory is best effort by default. If Hindsight is down, too slow or answers with an error, the middleware reports the exception through Laravel's exception handler and the agent answers without memory. A hung server costs at most the 10-second timeout, not the client's 120 seconds. Call `throwOnError()` if a run without memory is worse than no run.
+Memory is best effort by default. If Hindsight is down, too slow or answers with an error, the middleware reports the exception through Laravel's exception handler and the agent answers without memory. A hung server costs at most the 10-second timeout, not the client's 120 seconds. If you bound your own HTTP client as `hindsight.http`, its own timeout applies instead, so give it one. Call `throwOnError()` if a run without memory is worse than no run.
+
+List `Memory` first in `middleware()`. Then it sees each step as the model finally answers it, even when another middleware asks the model again.
 
 ### The tools
 

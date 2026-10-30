@@ -101,6 +101,16 @@ final class ServiceProviderTest extends TestCase
             ->assertSuccessful();
     }
 
+    public function test_status_reports_a_malformed_url_instead_of_crashing(): void
+    {
+        config(['hindsight.url' => 'localhost:8888']);
+        $this->app->forgetInstance(Hindsight::class);
+
+        $this->artisan('hindsight:status')
+            ->expectsOutputToContain('The Hindsight URL must be an http or https URL')
+            ->assertFailed();
+    }
+
     public function test_status_fails_when_the_server_is_unreachable(): void
     {
         $this->fakeHindsight()->fail(new ConnectException('Connection refused', new Request('GET', 'http://hindsight.test/version')));

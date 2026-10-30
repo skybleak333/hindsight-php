@@ -66,7 +66,9 @@ final class Hindsight
 
         $valid = $parts !== false
             && in_array(strtolower($parts['scheme'] ?? ''), ['http', 'https'], true)
-            && preg_match('/^(\[[0-9a-fA-F:.]+\]|[A-Za-z0-9.-]+)$/', $parts['host'] ?? '') === 1;
+            && ($parts['host'] ?? '') !== ''
+            // Underscores (Docker Compose service names) and Unicode hosts are fine; whitespace never is.
+            && preg_match('/[\s\x00-\x1f\x7f]/', $parts['host']) !== 1;
 
         if (! $valid) {
             throw new ConfigurationException("The Hindsight URL must be an http or https URL, got '{$baseUrl}'.");

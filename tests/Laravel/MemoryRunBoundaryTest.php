@@ -57,6 +57,8 @@ final class MemoryRunBoundaryTest extends TestCase
 
     public function test_a_tool_waiting_for_approval_pauses_the_run_without_retaining_it(): void
     {
+        // The fake model sends the tool call without text. The real shape, text plus a tool call, is covered
+        // by test_a_step_that_asks_for_a_tool_is_not_retained_even_when_it_is_the_last_one.
         ChatAgent::fake([new ToolCall('call_1', 'refund_order', ['order' => 5])]);
         $this->queueRecall([]);
 

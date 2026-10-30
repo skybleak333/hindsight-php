@@ -14,10 +14,11 @@ final class Text
      */
     public static function limit(string $text, int $characters): string
     {
-        if (preg_match('/^.{0,'.$characters.'}/su', $text, $match) !== 1 || $match[0] === $text) {
-            return $text;
+        if (preg_match('/^.{0,'.$characters.'}/su', $text, $match) !== 1) {
+            // Not valid UTF-8, so characters cannot be counted; bytes will do.
+            return strlen($text) <= $characters ? $text : rtrim(substr($text, 0, $characters)).'...';
         }
 
-        return rtrim($match[0]).'...';
+        return $match[0] === $text ? $text : rtrim($match[0]).'...';
     }
 }

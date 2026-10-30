@@ -140,6 +140,15 @@ final class TransportTest extends ClientTestCase
         new Hindsight($url);
     }
 
+    public function test_docker_service_names_and_unicode_hosts_are_valid(): void
+    {
+        $this->checkContract = false;
+
+        $this->assertInstanceOf(Hindsight::class, new Hindsight('http://hindsight_api:8888'));
+        $this->assertInstanceOf(Hindsight::class, new Hindsight('https://bücher.example'));
+        $this->assertInstanceOf(Hindsight::class, new Hindsight('http://[::1]:8888'));
+    }
+
     public function test_with_timeout_builds_a_client_with_a_shorter_timeout(): void
     {
         $this->checkContract = false;
@@ -156,6 +165,19 @@ final class TransportTest extends ClientTestCase
     public function test_with_timeout_keeps_a_client_you_passed_in(): void
     {
         $this->assertSame($this->hindsight, $this->hindsight->withTimeout(5));
+    }
+
+    public function test_long_bodies_that_are_not_utf8_are_shortened_too(): void
+    {
+        $this->http->respond(new Response(500, ['Content-Type' => 'text/plain'], str_repeat("Fehler \xE4", 100)));
+
+        try {
+            $this->hindsight->health();
+            $this->fail('Expected an ApiException.');
+        } catch (ApiException $exception) {
+            $this->assertStringEndsWith('...', $exception->getMessage());
+            $this->assertLessThan(340, strlen($exception->getMessage()));
+        }
     }
 
     public function test_long_error_bodies_are_shortened_without_mbstring(): void

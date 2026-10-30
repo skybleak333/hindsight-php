@@ -17,11 +17,13 @@ final class StatusCommand extends Command
 
     protected $description = 'Check the connection to the Hindsight API';
 
-    public function handle(Hindsight $hindsight): int
+    public function handle(): int
     {
         $url = config('hindsight.url');
 
         try {
+            // Resolved here, not injected, so a malformed URL is reported instead of crashing the command.
+            $hindsight = $this->laravel->make(Hindsight::class);
             $version = $hindsight->version();
             $features = is_array($version['features'] ?? null) ? $version['features'] : [];
 
