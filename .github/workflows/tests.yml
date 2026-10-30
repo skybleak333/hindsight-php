@@ -54,9 +54,14 @@ jobs:
 
   client-only:
     # laravel/ai needs PHP 8.3, so on PHP 8.2 only the framework-agnostic client is tested.
-    name: PHP 8.2, client without Laravel
+    name: PHP 8.2, client without Laravel${{ matrix.stability == 'prefer-lowest' && ', lowest deps' || '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
+
+    strategy:
+      fail-fast: false
+      matrix:
+        stability: ['prefer-stable', 'prefer-lowest']
 
     steps:
       - uses: actions/checkout@v5
@@ -69,7 +74,10 @@ jobs:
       - name: Install dependencies
         run: |
           composer remove --dev laravel/ai orchestra/testbench --no-update --no-interaction
-          composer update --prefer-dist --no-interaction --no-progress
+          composer update --${{ matrix.stability }} --prefer-dist --no-interaction --no-progress
+
+      - name: Show versions
+        run: composer show | grep -E '^(guzzlehttp/guzzle|guzzlehttp/psr7|phpunit/phpunit|psr/log) '
 
       - name: Run tests
         run: vendor/bin/phpunit --testsuite unit
