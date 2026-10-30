@@ -1,7 +1,16 @@
 {
     "name": "fedoseev/hindsight-php",
     "description": "PHP client for Hindsight agent memory, with long-term memory for Laravel AI SDK agents.",
-    "keywords": ["hindsight", "agent memory", "ai", "llm", "laravel", "laravel-ai", "memory", "rag"],
+    "keywords": [
+        "hindsight",
+        "agent memory",
+        "ai",
+        "llm",
+        "laravel",
+        "laravel-ai",
+        "memory",
+        "rag"
+    ],
     "type": "library",
     "license": "MIT",
     "homepage": "https://github.com/skybleak333/hindsight-php",
@@ -15,7 +24,8 @@
         "php": "^8.2",
         "guzzlehttp/guzzle": "^7.8",
         "psr/http-client": "^1.0",
-        "psr/http-factory": "^1.0"
+        "psr/http-factory": "^1.0",
+        "psr/log": "^1.1 || ^2.0 || ^3.0"
     },
     "require-dev": {
         "laravel/ai": "^1.0",

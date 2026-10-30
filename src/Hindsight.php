@@ -17,6 +17,7 @@ use GuzzleHttp\Psr7\HttpFactory;
 use Psr\Http\Client\ClientInterface;
 use Psr\Http\Message\RequestFactoryInterface;
 use Psr\Http\Message\StreamFactoryInterface;
+use Psr\Log\LoggerInterface;
 use stdClass;
 
 /**
@@ -41,6 +42,8 @@ final class Hindsight
      * @param  float  $timeout  Seconds to wait for a response when the default client is used. Synchronous retain and
      *                          reflect call an LLM on the server, so they take longer than a plain HTTP request.
      * @param  array<string, string>  $headers  Extra headers for every request.
+     * @param  LoggerInterface|null  $logger  Receives a warning when the server ignored a parameter it does not know,
+     *                                        e.g. a misspelled key in $options.
      */
     public function __construct(
         string $baseUrl = 'http://localhost:8888',
@@ -50,6 +53,7 @@ final class Hindsight
         array $headers = [],
         ?RequestFactoryInterface $requestFactory = null,
         ?StreamFactoryInterface $streamFactory = null,
+        ?LoggerInterface $logger = null,
     ) {
         $factory = new HttpFactory;
 
@@ -60,6 +64,7 @@ final class Hindsight
             $requestFactory ?? $factory,
             $streamFactory ?? $factory,
             $headers,
+            $logger,
         );
     }
 

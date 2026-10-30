@@ -12,6 +12,7 @@ use Fedoseev\Hindsight\Exceptions\NotFoundException;
 use Fedoseev\Hindsight\Exceptions\UnexpectedResponseException;
 use Fedoseev\Hindsight\Exceptions\ValidationException;
 use Fedoseev\Hindsight\Hindsight;
+use Fedoseev\Hindsight\Tests\Support\ArrayLogger;
 use Fedoseev\Hindsight\Tests\Support\FakeHttpClient;
 use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Psr7\Request;
@@ -88,6 +89,31 @@ final class TransportTest extends ClientTestCase
         $this->hindsight->retain('b1', substr('Привет', 0, 5));
 
         $this->assertSame('Пр'."\u{FFFD}", $this->http->lastJson()['items'][0]['content'] ?? null);
+    }
+
+    public function test_parameters_the_server_ignored_are_logged(): void
+    {
+        // Hindsight 1.1 answers 200 for unknown fields, but names them in X-Ignored-Params.
+        $logger = new ArrayLogger;
+        $http = (new FakeHttpClient)->respond(new Response(200, ['Content-Type' => 'application/json', 'X-Ignored-Params' => 'max_token, min_score'], '{"results": []}'));
+
+        (new Hindsight('http://hindsight.test', httpClient: $http, logger: $logger))->recall('b1', 'q', options: ['max_token' => 10, 'min_score' => 0.5]);
+
+        $this->assertSame([[
+            'level' => 'warning',
+            'message' => 'Hindsight ignored unknown parameters: max_token, min_score (POST /v1/default/banks/b1/memories/recall)',
+            'context' => ['parameters' => ['max_token', 'min_score'], 'method' => 'POST', 'path' => '/v1/default/banks/b1/memories/recall'],
+        ]], $logger->records);
+    }
+
+    public function test_nothing_is_logged_when_every_parameter_was_used(): void
+    {
+        $logger = new ArrayLogger;
+        $http = (new FakeHttpClient)->json(['results' => []]);
+
+        (new Hindsight('http://hindsight.test', httpClient: $http, logger: $logger))->recall('b1', 'q');
+
+        $this->assertSame([], $logger->records);
     }
 
     public function test_not_found_errors_carry_the_server_message(): void

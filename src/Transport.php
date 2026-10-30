@@ -15,6 +15,7 @@ use Psr\Http\Client\ClientExceptionInterface;
 use Psr\Http\Client\ClientInterface;
 use Psr\Http\Message\RequestFactoryInterface;
 use Psr\Http\Message\StreamFactoryInterface;
+use Psr\Log\LoggerInterface;
 use stdClass;
 
 /**
@@ -36,6 +37,7 @@ final class Transport
         private readonly RequestFactoryInterface $requests,
         private readonly StreamFactoryInterface $streams,
         private readonly array $headers = [],
+        private readonly ?LoggerInterface $logger = null,
     ) {
         $this->baseUrl = rtrim($baseUrl, '/');
     }
@@ -79,6 +81,8 @@ final class Transport
             throw ConnectionException::from($this->baseUrl, $exception);
         }
 
+        $this->reportIgnoredParameters($method, $path, $response->getHeaderLine('X-Ignored-Params'));
+
         $contents = (string) $response->getBody();
         $decoded = $contents === '' ? null : json_decode($contents, true);
         $payload = $contents !== '' && json_last_error() !== JSON_ERROR_NONE ? $contents : $decoded;
@@ -106,6 +110,24 @@ final class Transport
         }
 
         return Fields::map(['payload' => $payload], 'payload') ?? [];
+    }
+
+    /**
+     * Hindsight accepts unknown query parameters and body fields, ignores them, and names them in this header.
+     * A misspelled option would otherwise change the result without any sign, so say so loudly.
+     */
+    private function reportIgnoredParameters(string $method, string $path, string $header): void
+    {
+        if ($this->logger === null || trim($header) === '') {
+            return;
+        }
+
+        $parameters = array_values(array_filter(array_map(trim(...), explode(',', $header)), static fn (string $name): bool => $name !== ''));
+
+        $this->logger->warning(
+            'Hindsight ignored unknown parameters: '.implode(', ', $parameters)." ({$method} {$path})",
+            ['parameters' => $parameters, 'method' => $method, 'path' => $path],
+        );
     }
 
     /**

@@ -10,6 +10,8 @@ use Fedoseev\Hindsight\Laravel\HindsightServiceProvider;
 use Fedoseev\Hindsight\Tests\Support\FakeHttpClient;
 use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Psr7\Request;
+use GuzzleHttp\Psr7\Response;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\ServiceProvider;
 use ReflectionClass;
 use ReflectionMethod;
@@ -40,6 +42,20 @@ final class ServiceProviderTest extends TestCase
         $this->assertSame('https://hindsight.example.com/version', (string) $http->lastRequest()->getUri());
         $this->assertSame('Bearer hsk_from_config', $http->lastRequest()->getHeaderLine('Authorization'));
         $this->assertSame(120.0, config('hindsight.timeout'));
+    }
+
+    public function test_ignored_parameters_go_to_the_application_log(): void
+    {
+        Log::spy();
+        $http = (new FakeHttpClient)->respond(new Response(200, ['X-Ignored-Params' => 'max_token'], '{"results": []}'));
+        $this->app->instance('hindsight.http', $http);
+
+        $this->app->make(Hindsight::class)->recall('b', 'q', options: ['max_token' => 10]);
+
+        Log::shouldHaveReceived('warning')->once()->with(
+            'Hindsight ignored unknown parameters: max_token (POST /v1/default/banks/b/memories/recall)',
+            ['parameters' => ['max_token'], 'method' => 'POST', 'path' => '/v1/default/banks/b/memories/recall'],
+        );
     }
 
     public function test_the_facade_calls_the_bound_client(): void

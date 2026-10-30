@@ -10,6 +10,7 @@ use Illuminate\Contracts\Config\Repository;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\ServiceProvider;
 use Psr\Http\Client\ClientInterface;
+use Psr\Log\LoggerInterface;
 
 final class HindsightServiceProvider extends ServiceProvider
 {
@@ -30,6 +31,7 @@ final class HindsightServiceProvider extends ServiceProvider
                 httpClient: $httpClient instanceof ClientInterface ? $httpClient : null,
                 timeout: (float) ($config['timeout'] ?? 120),
                 headers: $config['headers'] ?? [],
+                logger: $app->make(LoggerInterface::class),
             );
         });
 
