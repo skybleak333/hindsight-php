@@ -104,11 +104,10 @@ final class OpenApiContract
             "{$method} {$template} documents no JSON body for status {$status}.",
         );
 
-        $this->assertMatchesSchema(
-            "{$method} {$template} response",
-            json_decode(json_encode($body, JSON_THROW_ON_ERROR), flags: JSON_THROW_ON_ERROR),
-            "{$pointer}/responses/{$status}/content/application~1json/schema",
-        );
+        // Arrays from fixtures are re-encoded; objects (a raw body decoded without assoc) are checked as they are.
+        $data = is_array($body) ? json_decode(json_encode($body, JSON_THROW_ON_ERROR), flags: JSON_THROW_ON_ERROR) : $body;
+
+        $this->assertMatchesSchema("{$method} {$template} response", $data, "{$pointer}/responses/{$status}/content/application~1json/schema");
     }
 
     /**

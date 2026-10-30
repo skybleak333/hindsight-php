@@ -38,7 +38,7 @@ final class ClientTest extends TestCase
     {
         $version = $this->hindsight->version();
 
-        OpenApiContract::instance()->assertResponse('GET', '/version', $version);
+        OpenApiContract::instance()->assertResponse('GET', '/version', $this->recorder->lastBody());
         $this->assertMatchesRegularExpression('/^1\.\d+\.\d+/', $version['api_version']);
         $this->assertIsArray($this->hindsight->health());
     }
@@ -69,7 +69,7 @@ final class ClientTest extends TestCase
     public function test_bank_lifecycle(): void
     {
         $profile = $this->hindsight->createBank($this->bank, name: 'PHP client test', reflectMission: 'Remember test facts.');
-        OpenApiContract::instance()->assertResponse('PUT', "/v1/default/banks/{$this->bank}", $profile);
+        OpenApiContract::instance()->assertResponse('PUT', "/v1/default/banks/{$this->bank}", $this->recorder->lastBody());
         $this->assertSame('PHP client test', $profile['name']);
 
         $this->hindsight->updateBank($this->bank, reflectMission: 'Remember updated test facts.');
@@ -82,8 +82,8 @@ final class ClientTest extends TestCase
         $this->assertSame(1500, $config['overrides']['retain_chunk_size'] ?? null);
         $this->assertArrayNotHasKey('retain_chunk_size', $this->hindsight->resetBankConfig($this->bank)['overrides']);
 
-        $stats = $this->hindsight->getBankStats($this->bank);
-        OpenApiContract::instance()->assertResponse('GET', "/v1/default/banks/{$this->bank}/stats", $stats);
+        $this->hindsight->getBankStats($this->bank);
+        OpenApiContract::instance()->assertResponse('GET', "/v1/default/banks/{$this->bank}/stats", $this->recorder->lastBody());
 
         $this->assertTrue($this->hindsight->deleteBank($this->bank)['success']);
     }
@@ -92,14 +92,14 @@ final class ClientTest extends TestCase
     {
         $retained = $this->hindsight->retain($this->bank, 'Alice works at Google as a software engineer.', context: 'integration test');
 
-        OpenApiContract::instance()->assertResponse('POST', "/v1/default/banks/{$this->bank}/memories", $retained->raw);
+        OpenApiContract::instance()->assertResponse('POST', "/v1/default/banks/{$this->bank}/memories", $this->recorder->lastBody());
         $this->assertTrue($retained->success);
         $this->assertSame(1, $retained->itemsCount);
         $this->assertFalse($retained->async);
 
         $recalled = $this->hindsight->recall($this->bank, 'Where does Alice work?');
 
-        OpenApiContract::instance()->assertResponse('POST', "/v1/default/banks/{$this->bank}/memories/recall", $recalled->raw);
+        OpenApiContract::instance()->assertResponse('POST', "/v1/default/banks/{$this->bank}/memories/recall", $this->recorder->lastBody());
         $this->assertNotEmpty($recalled->results);
         $this->assertStringContainsString('Google', implode("\n", $recalled->texts()));
         $this->assertNotSame('', $recalled->results[0]->id);
@@ -114,7 +114,7 @@ final class ClientTest extends TestCase
 
         $operation = $this->hindsight->waitForOperation($this->bank, $retained->operationId, timeout: 60, interval: 0.25);
 
-        OpenApiContract::instance()->assertResponse('GET', "/v1/default/banks/{$this->bank}/operations/{$operation->id}", $operation->raw);
+        OpenApiContract::instance()->assertResponse('GET', "/v1/default/banks/{$this->bank}/operations/{$operation->id}", $this->recorder->lastBody());
         $this->assertTrue($operation->isCompleted());
         $this->assertStringContainsString('green tea', implode("\n", $this->hindsight->recall($this->bank, 'What does Bob drink?')->texts()));
     }
@@ -186,6 +186,8 @@ final class ClientTest extends TestCase
         $logger = new ArrayLogger;
         $client = new Hindsight((string) (getenv('HINDSIGHT_TEST_URL') ?: 'http://127.0.0.1:8888'), apiKey: getenv('HINDSIGHT_TEST_API_KEY') ?: null, logger: $logger);
 
+        // Reads of a bank nobody wrote to answer 404, so store something first.
+        $client->retain($this->bank, 'Frank likes jazz.');
         $client->recall($this->bank, 'anything', options: ['max_token' => 10]);
 
         $this->assertCount(1, $logger->records);

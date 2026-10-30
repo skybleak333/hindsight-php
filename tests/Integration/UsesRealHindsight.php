@@ -6,6 +6,8 @@ namespace Fedoseev\Hindsight\Tests\Integration;
 
 use Fedoseev\Hindsight\Exceptions\HindsightException;
 use Fedoseev\Hindsight\Hindsight;
+use Fedoseev\Hindsight\Tests\Support\RecordingHttpClient;
+use GuzzleHttp\Client as GuzzleClient;
 
 /**
  * Connects to a real Hindsight server, by default http://127.0.0.1:8888.
@@ -16,6 +18,9 @@ use Fedoseev\Hindsight\Hindsight;
 trait UsesRealHindsight
 {
     protected Hindsight $hindsight;
+
+    /** Raw response bodies, for checking them against the OpenAPI document. */
+    protected RecordingHttpClient $recorder;
 
     /** @var list<string> */
     private array $banks = [];
@@ -30,7 +35,8 @@ trait UsesRealHindsight
             $this->fail("Refusing to run integration tests against {$host}. Set HINDSIGHT_TEST_ALLOW_REMOTE=1 for a disposable remote server.");
         }
 
-        $this->hindsight = new Hindsight($url, apiKey: getenv('HINDSIGHT_TEST_API_KEY') ?: null, timeout: 60);
+        $this->recorder = new RecordingHttpClient(new GuzzleClient(['timeout' => 60]));
+        $this->hindsight = new Hindsight($url, apiKey: getenv('HINDSIGHT_TEST_API_KEY') ?: null, httpClient: $this->recorder);
 
         try {
             $this->hindsight->version();
