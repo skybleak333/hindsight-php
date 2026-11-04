@@ -32,6 +32,33 @@ final class BanksTest extends ClientTestCase
         $this->assertSame('support', $profile['bank_id']);
     }
 
+    public function test_bank_aliases(): void
+    {
+        $aliases = ['bank_id' => 'support', 'aliases' => [['alias' => 'helpdesk', 'primary' => true]]];
+
+        $this->respond('POST', '/v1/default/banks/support/aliases', $aliases, 201);
+        $this->assertSame($aliases, $this->hindsight->addBankAlias('support', 'helpdesk', primary: true));
+        $this->assertSent('POST', '/v1/default/banks/support/aliases');
+        $this->assertSame(['alias' => 'helpdesk', 'primary' => true], $this->http->lastJson());
+
+        $this->respond('POST', '/v1/default/banks/support/aliases', $aliases, 201);
+        $this->hindsight->addBankAlias('support', 'helpdesk');
+        $this->assertSame(['alias' => 'helpdesk'], $this->http->lastJson());
+
+        $this->respond('GET', '/v1/default/banks/support/aliases', $aliases);
+        $this->assertSame('helpdesk', $this->hindsight->listBankAliases('support')['aliases'][0]['alias']);
+        $this->assertSent('GET', '/v1/default/banks/support/aliases');
+
+        $this->respond('PATCH', '/v1/default/banks/support/aliases/helpdesk', ['bank_id' => 'support', 'aliases' => [['alias' => 'helpdesk', 'primary' => false]]]);
+        $this->hindsight->setPrimaryBankAlias('support', 'helpdesk', primary: false);
+        $this->assertSent('PATCH', '/v1/default/banks/support/aliases/helpdesk');
+        $this->assertSame(['primary' => false], $this->http->lastJson());
+
+        $this->respond('DELETE', '/v1/default/banks/support/aliases/helpdesk', ['bank_id' => 'support', 'aliases' => []]);
+        $this->assertSame([], $this->hindsight->removeBankAlias('support', 'helpdesk')['aliases']);
+        $this->assertSent('DELETE', '/v1/default/banks/support/aliases/helpdesk');
+    }
+
     public function test_create_bank_with_defaults_sends_an_empty_object(): void
     {
         $this->respond('PUT', '/v1/default/banks/support', self::PROFILE);

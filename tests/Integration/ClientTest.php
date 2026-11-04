@@ -105,6 +105,21 @@ final class ClientTest extends TestCase
         $this->assertNotSame('', $recalled->results[0]->id);
     }
 
+    public function test_an_alias_reaches_the_banks_memories(): void
+    {
+        $this->hindsight->retain($this->bank, 'Alice works at Google as a software engineer.', context: 'integration test');
+        $alias = $this->newBank();
+
+        $aliases = $this->hindsight->addBankAlias($this->bank, $alias);
+
+        OpenApiContract::instance()->assertResponse('POST', "/v1/default/banks/{$this->bank}/aliases", $this->recorder->lastBody(), 201);
+        $this->assertSame([$alias], array_column($aliases['aliases'], 'alias'));
+        $this->assertStringContainsString('Google', implode("\n", $this->hindsight->recall($alias, 'Where does Alice work?')->texts()));
+
+        $this->assertSame([], $this->hindsight->removeBankAlias($this->bank, $alias)['aliases']);
+        OpenApiContract::instance()->assertResponse('DELETE', "/v1/default/banks/{$this->bank}/aliases/{$alias}", $this->recorder->lastBody());
+    }
+
     public function test_an_async_retain_can_be_awaited(): void
     {
         $retained = $this->hindsight->retain($this->bank, 'Bob prefers green tea over coffee.', async: true);

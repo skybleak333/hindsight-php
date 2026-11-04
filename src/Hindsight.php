@@ -359,6 +359,55 @@ final class Hindsight
     }
 
     /**
+     * The extra ids that also reach this bank, the primary one first.
+     *
+     * @return array<string, mixed>
+     */
+    public function listBankAliases(string $bankId): array
+    {
+        return $this->transport->json('GET', Transport::path('/v1/default/banks/%s/aliases', $bankId));
+    }
+
+    /**
+     * Make $alias reach this bank too, for example to rename a bank without moving every
+     * client at once. A primary alias is also the id the bank is shown as.
+     *
+     * @return array<string, mixed>
+     */
+    public function addBankAlias(string $bankId, string $alias, bool $primary = false): array
+    {
+        $body = ['alias' => $alias];
+
+        if ($primary) {
+            $body['primary'] = true;
+        }
+
+        return $this->transport->json('POST', Transport::path('/v1/default/banks/%s/aliases', $bankId), $body);
+    }
+
+    /**
+     * Show the bank under $alias, or with $primary false go back to its own id.
+     *
+     * @return array<string, mixed>
+     */
+    public function setPrimaryBankAlias(string $bankId, string $alias, bool $primary = true): array
+    {
+        return $this->transport->json('PATCH', Transport::path('/v1/default/banks/%s/aliases/%s', $bankId, $alias), [
+            'primary' => $primary,
+        ]);
+    }
+
+    /**
+     * Stop $alias from reaching this bank. The bank and its memories stay.
+     *
+     * @return array<string, mixed>
+     */
+    public function removeBankAlias(string $bankId, string $alias): array
+    {
+        return $this->transport->json('DELETE', Transport::path('/v1/default/banks/%s/aliases/%s', $bankId, $alias));
+    }
+
+    /**
      * The bank's effective configuration and the fields it overrides.
      *
      * @return array<string, mixed>
@@ -564,6 +613,16 @@ final class Hindsight
     public function cancelOperation(string $bankId, string $operationId): array
     {
         return $this->transport->json('DELETE', Transport::path('/v1/default/banks/%s/operations/%s', $bankId, $operationId));
+    }
+
+    /**
+     * Queue a failed or cancelled operation again, or run a deferred one now.
+     *
+     * @return array<string, mixed>
+     */
+    public function retryOperation(string $bankId, string $operationId): array
+    {
+        return $this->transport->json('POST', Transport::path('/v1/default/banks/%s/operations/%s/retry', $bankId, $operationId));
     }
 
     /**

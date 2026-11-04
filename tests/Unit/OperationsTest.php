@@ -74,6 +74,14 @@ final class OperationsTest extends ClientTestCase
         $this->assertSent('DELETE', '/v1/default/banks/b1/operations/op-1');
     }
 
+    public function test_retry_operation(): void
+    {
+        $this->respond('POST', '/v1/default/banks/b1/operations/op-1/retry', ['success' => true, 'message' => 'queued', 'operation_id' => 'op-1']);
+
+        $this->assertTrue($this->hindsight->retryOperation('b1', 'op-1')['success']);
+        $this->assertSent('POST', '/v1/default/banks/b1/operations/op-1/retry');
+    }
+
     public function test_an_unknown_status_from_a_newer_server_does_not_crash(): void
     {
         $this->checkContract = false;

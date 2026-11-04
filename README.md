@@ -171,11 +171,12 @@ $answer->structuredOutput; // ['city' => 'Rotterdam']
 | Area | Methods |
 |---|---|
 | Banks | `listBanks`, `createBank`, `updateBank`, `getBankStats`, `deleteBank`, `getBankConfig`, `updateBankConfig`, `resetBankConfig` |
+| Bank aliases | `listBankAliases`, `addBankAlias`, `setPrimaryBankAlias`, `removeBankAlias` |
 | Memories | `listMemories`, `getMemory`, `clearMemories` |
 | Documents | `listDocuments`, `getDocument`, `deleteDocument` |
 | Directives | `createDirective`, `listDirectives`, `getDirective`, `updateDirective`, `deleteDirective` |
 | Mental models | `createMentalModel`, `listMentalModels`, `getMentalModel`, `updateMentalModel`, `deleteMentalModel`, `refreshMentalModel` |
-| Operations | `getOperation`, `listOperations`, `cancelOperation`, `waitForOperation` |
+| Operations | `getOperation`, `listOperations`, `cancelOperation`, `retryOperation`, `waitForOperation` |
 | Server | `health`, `version` |
 
 Bank settings such as the reflect mission and disposition live in the bank configuration since Hindsight 1.1 (the old profile endpoints answer `410 Gone`):
@@ -183,6 +184,13 @@ Bank settings such as the reflect mission and disposition live in the bank confi
 ```php
 $hindsight->createBank('support', name: 'Support', reflectMission: 'Help customers of an online shop.');
 $hindsight->updateBankConfig('support', ['disposition_empathy' => 5]);
+```
+
+An alias is another id that reaches the same bank, so a bank can be renamed while clients move to the new id one by one. A failed operation, for example a retain that hit the LLM provider's rate limit, can be queued again:
+
+```php
+$hindsight->addBankAlias('support', 'helpdesk');            // requests to "helpdesk" now reach "support"
+$hindsight->retryOperation('support', $failed->id);
 ```
 
 For any endpoint without its own method, use `request()`. It returns the decoded JSON:

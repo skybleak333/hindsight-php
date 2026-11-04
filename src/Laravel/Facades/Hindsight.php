@@ -22,6 +22,10 @@ use Illuminate\Support\Facades\Facade;
  * @method static array<string, mixed> updateBank(string $bankId, ?string $name = null, ?string $reflectMission = null, array<string, mixed> $options = [])
  * @method static array<string, mixed> getBankStats(string $bankId)
  * @method static array<string, mixed> deleteBank(string $bankId)
+ * @method static array<string, mixed> listBankAliases(string $bankId)
+ * @method static array<string, mixed> addBankAlias(string $bankId, string $alias, bool $primary = false)
+ * @method static array<string, mixed> setPrimaryBankAlias(string $bankId, string $alias, bool $primary = true)
+ * @method static array<string, mixed> removeBankAlias(string $bankId, string $alias)
  * @method static array<string, mixed> getBankConfig(string $bankId)
  * @method static array<string, mixed> updateBankConfig(string $bankId, array<string, mixed> $updates)
  * @method static array<string, mixed> resetBankConfig(string $bankId)
@@ -42,6 +46,7 @@ use Illuminate\Support\Facades\Facade;
  * @method static \Fedoseev\Hindsight\Responses\Operation getOperation(string $bankId, string $operationId)
  * @method static array<string, mixed> listOperations(string $bankId, string|null $status = null, ?int $limit = null, ?int $offset = null)
  * @method static array<string, mixed> cancelOperation(string $bankId, string $operationId)
+ * @method static array<string, mixed> retryOperation(string $bankId, string $operationId)
  * @method static \Fedoseev\Hindsight\Responses\Operation waitForOperation(string $bankId, string $operationId, float $timeout = 60.0, float $interval = 0.5)
  * @method static mixed request(string $method, string $path, array<array-key, mixed>|object|null $body = null, array<string, mixed> $query = [])
  *
