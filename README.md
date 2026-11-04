@@ -364,7 +364,7 @@ Combine it with `SupportAgent::fake([...])` from the Laravel AI SDK to test an a
 ## How this package is tested
 
 - **Every request in the unit tests is checked against Hindsight's own [OpenAPI document](tests/Fixtures/openapi-1.1.0.json)**, downloaded from the `v1.1.0` tag. The check is stricter than the server: Hindsight answers `200` for unknown fields, so a misspelled field name in the client would never fail a request. The tests reject it. Response fixtures are checked against the same document.
-- **CI starts a real Hindsight 1.1.0 server** (`hindsight-api-slim` with local ONNX embeddings and no LLM) and runs the integration suite against it, including a Laravel AI agent that remembers a fact from one conversation in the next. The job runs on every push and weekly, so a new Hindsight release that breaks something shows up quickly.
+- **CI starts real Hindsight 1.1.0 and 1.2.0 servers** (`hindsight-api-slim` with local ONNX embeddings and no LLM) and runs the integration suite against it, including a Laravel AI agent that remembers a fact from one conversation in the next. The job runs on every push and weekly, so a new Hindsight release that breaks something shows up quickly.
 - PHPStan at level 9. The client reads response fields without trusting their types, so an unexpected value from the server becomes `null` instead of a `TypeError`.
 
 Without an LLM the server cannot run reflect or mental models, so those are covered by the OpenAPI-checked unit tests only.
@@ -376,7 +376,7 @@ Without an LLM the server cannot run reflect or mental models, so those are cove
 | PHP | 8.2+ (client), 8.3+ (Laravel AI) | 8.2, 8.3, 8.4, 8.5 |
 | Laravel | 12, 13 | 12, 13 |
 | Laravel AI SDK | 1.x | latest and lowest allowed |
-| Hindsight API | 1.1 | 1.1.0 |
+| Hindsight API | 1.1, 1.2 | 1.1.0, 1.2.0 |
 
 ## Contributing
 
