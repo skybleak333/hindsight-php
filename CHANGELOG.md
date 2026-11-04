@@ -2,6 +2,14 @@
 
 All notable changes to this package are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the package uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- Bank aliases: `listBankAliases()`, `addBankAlias()`, `setPrimaryBankAlias()` and `removeBankAlias()`, on the client and the facade.
+- `retryOperation()` to queue a failed or cancelled operation again.
+- CI also runs the integration suite against Hindsight 1.2.0.
+
 ## [0.1.0] - 2026-10-30
 
 First release. Tested against Hindsight 1.1.0, Laravel 12 and 13, and Laravel AI SDK 1.0 to 1.3.
