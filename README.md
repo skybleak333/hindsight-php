@@ -55,6 +55,13 @@ This is a community package. It is not affiliated with Vectorize, the company be
 composer require fedoseev/hindsight-php
 ```
 
+Until the package is listed on Packagist, tell Composer where to find it first:
+
+```bash
+composer config repositories.hindsight-php vcs https://github.com/skybleak333/hindsight-php
+composer require fedoseev/hindsight-php:^0.2
+```
+
 The client needs PHP 8.2+ and works in any PHP project. The Laravel integration is discovered automatically. The agent memory needs [`laravel/ai`](https://github.com/laravel/ai) 1.x and PHP 8.3+.
 
 ## Run a Hindsight server
