@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace Fedoseev\Hindsight\Tests\Integration;
 
+use Closure;
+use Fedoseev\Hindsight\Exceptions\ApiException;
 use Fedoseev\Hindsight\Exceptions\NotFoundException;
+use Fedoseev\Hindsight\Exceptions\ValidationException;
 use Fedoseev\Hindsight\Hindsight;
 use Fedoseev\Hindsight\TagsMatch;
 use Fedoseev\Hindsight\Testing\HindsightFake;
@@ -71,6 +74,28 @@ final class FakeMatchesServerTest extends TestCase
 
             $this->assertSame(['second version'], $this->labels($client, $bank, null, TagsMatch::Any), $name);
         }
+    }
+
+    /**
+     * @param  Closure(Hindsight, string): mixed  $call
+     */
+    #[DataProviderExternal(HindsightFakeTest::class, 'rejectedRetains')]
+    public function test_rejected_retains(Closure $call, int $status, ?string $field): void
+    {
+        $bank = $this->newBank();
+        $answers = [];
+
+        foreach (['server' => $this->hindsight, 'fake' => new HindsightFake] as $name => $client) {
+            try {
+                $call($client, $bank);
+                $this->fail("{$name}: expected the retain to be rejected.");
+            } catch (ApiException $exception) {
+                $answers[$name] = [$exception->statusCode, $exception instanceof ValidationException ? array_keys($exception->errors()) : null];
+            }
+        }
+
+        $this->assertSame($status, $answers['server'][0], 'The server');
+        $this->assertSame($answers['server'], $answers['fake']);
     }
 
     public function test_a_bank_nobody_wrote_to(): void

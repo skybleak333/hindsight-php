@@ -184,6 +184,13 @@ final class FakeServer implements ClientInterface
 
         $this->record('retain', $bankId, $body);
 
+        // Requests the server rejects before doing anything: 422 from its schema, 400 from its own checks.
+        $invalid = self::invalidRetain($body, $items);
+
+        if ($invalid !== null) {
+            return $invalid;
+        }
+
         // Like the server: a retry with the operation_id of an earlier async retain returns that operation and
         // stores nothing, and an id that belongs to another bank is a conflict.
         if ($operationId !== null && isset($this->operations[$operationId])) {
@@ -229,6 +236,64 @@ final class FakeServer implements ClientInterface
         }
 
         return self::json($response);
+    }
+
+    /**
+     * The checks of the server's request model (MemoryItem, RetainRequest) and of _validate_retain_update_modes,
+     * Hindsight 1.2.0, for the fields a client sets. The 422 body has FastAPI's shape.
+     *
+     * @param  array<string, mixed>  $body
+     * @param  list<mixed>  $items
+     */
+    private static function invalidRetain(array $body, array $items): ?ResponseInterface
+    {
+        $errors = [];
+        $operationId = $body['operation_id'] ?? null;
+
+        if ($operationId !== null && (! is_string($operationId) || preg_match('/^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$/i', $operationId) !== 1)) {
+            $errors[] = self::error(['body', 'operation_id'], 'value_error', 'Value error, operation_id must be a valid UUID', $operationId);
+        }
+
+        foreach ($items as $index => $item) {
+            $item = is_array($item) ? $item : [];
+
+            if (! array_key_exists('content', $item)) {
+                $errors[] = self::error(['body', 'items', $index, 'content'], 'missing', 'Field required', $item);
+            }
+
+            $mode = $item['update_mode'] ?? null;
+
+            if ($mode !== null && ! in_array($mode, ['replace', 'append'], true)) {
+                $errors[] = self::error(['body', 'items', $index, 'update_mode'], 'literal_error', "Input should be 'replace' or 'append'", $mode);
+            }
+
+            foreach (is_array($item['metadata'] ?? null) ? $item['metadata'] : [] as $key => $value) {
+                if (! is_string($value)) {
+                    $errors[] = self::error(['body', 'items', $index, 'metadata', $key], 'string_type', 'Input should be a valid string', $value);
+                }
+            }
+        }
+
+        if ($errors !== []) {
+            return self::json(['detail' => $errors], 422);
+        }
+
+        foreach ($items as $item) {
+            if (is_array($item) && ($item['update_mode'] ?? null) === 'append' && ! is_string($item['document_id'] ?? null)) {
+                return self::json(['detail' => "update_mode='append' requires a document_id"], 400);
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  list<int|string>  $location
+     * @return array<string, mixed>
+     */
+    private static function error(array $location, string $type, string $message, mixed $input): array
+    {
+        return ['type' => $type, 'loc' => $location, 'msg' => $message, 'input' => $input];
     }
 
     /**

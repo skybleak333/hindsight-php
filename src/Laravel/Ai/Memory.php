@@ -43,6 +43,9 @@ final class Memory
 {
     public const DEFAULT_CONTEXT = 'Conversation between a user and an AI assistant';
 
+    private const QUEUE_AND_USING = 'A queued retain resolves the client from the container in the worker, so a client given to using() '
+        .'would not be used for it. Bind that client as '.Hindsight::class.' in the container instead, or do not queue.';
+
     /** Seconds a recall or an async retain may take before the agent goes on without memory. */
     public const DEFAULT_TIMEOUT = 10.0;
 
@@ -175,15 +178,20 @@ final class Memory
 
     /**
      * Retain each exchange from a queue worker with the RetainMemory job, instead of calling Hindsight during
-     * the run. When Hindsight is down, the job retries with backoff, so the memory arrives later instead of
-     * being lost. Retries cannot store an exchange twice: every attempt sends the same operation ID.
+     * the run. While the Hindsight API is unavailable, the job retries with backoff, so the memory arrives later
+     * instead of being lost. Retries cannot store an exchange twice: every attempt sends the same operation ID.
      *
      * Leave the connection and queue null to use the ones in config/hindsight.php, or the application's defaults.
+     * The worker gets the client from the container, so queue() cannot be combined with using().
      */
     public function queue(?string $connection = null, ?string $queue = null): self
     {
         if (! $this->async) {
             throw new LogicException('A queued retain is always async: call either queue() or retainSynchronously().');
+        }
+
+        if ($this->client !== null) {
+            throw new LogicException(self::QUEUE_AND_USING);
         }
 
         $this->queued = true;
@@ -216,6 +224,10 @@ final class Memory
      */
     public function using(Hindsight $client): self
     {
+        if ($this->queued) {
+            throw new LogicException(self::QUEUE_AND_USING);
+        }
+
         $this->client = $client;
 
         return $this;
@@ -331,10 +343,11 @@ final class Memory
         }
 
         try {
-            // Through the bus directly, so the push happens on this line and a broken queue connection is caught below.
+            // Through the bus, not dispatch(), so a failed push is caught below. (With after_commit inside a
+            // transaction the push happens at commit, and its failure surfaces there.)
             app(Dispatcher::class)->dispatch($job);
         } catch (Throwable $exception) {
-            // On the sync driver the job runs right here, so its own Hindsight errors land here too.
+            // On the sync driver the job runs right here, once, and throws every Hindsight error it meets.
             if ($this->throw) {
                 throw $exception;
             }

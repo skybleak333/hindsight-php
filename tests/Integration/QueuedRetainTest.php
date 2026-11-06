@@ -41,8 +41,8 @@ final class QueuedRetainTest extends TestCase
         $job = new RetainMemory($bank, 'Carol takes the 8:15 train to work.', tags: ['user:carol']);
 
         // The first attempt reaches the server; then the same job, after a trip through the queue, runs again.
-        $job->handle($this->hindsight);
-        unserialize(serialize($job))->handle($this->hindsight);
+        $job->handle();
+        unserialize(serialize($job))->handle();
         $this->hindsight->waitForOperation($bank, $job->operationId, timeout: 60, interval: 0.25);
 
         $this->assertSame(1, $this->retainOperations($bank));
@@ -68,7 +68,7 @@ final class QueuedRetainTest extends TestCase
         $bank = $this->newBank();
         $job = new RetainMemory($bank, 'Erin renewed her subscription.', timestamp: '2026-03-02T08:15:00+00:00');
 
-        $job->handle($this->hindsight);
+        $job->handle();
         $this->hindsight->waitForOperation($bank, $job->operationId, timeout: 60, interval: 0.25);
 
         $memory = $this->hindsight->recall($bank, 'subscription')->results[0];

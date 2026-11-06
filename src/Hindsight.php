@@ -29,11 +29,14 @@ use stdClass;
  * dedicated method are reachable through request(). Methods that return arrays return the decoded
  * JSON with the API's own snake_case keys.
  *
+ * Not final only so that Testing\HindsightFake can stand in for it. Other subclasses are not supported:
+ * withTimeout() returns a plain Hindsight client, which the middleware, the tools and the job call.
+ *
  * @see https://hindsight.vectorize.io/api-reference
  */
 class Hindsight
 {
-    public const VERSION = '0.1.0';
+    public const VERSION = '0.2.0';
 
     private readonly Transport $transport;
 

@@ -6,9 +6,16 @@ All notable changes to this package are documented here. The format follows [Kee
 
 ### Added
 
+- `Hindsight::fake()` and `Fedoseev\Hindsight\Testing\HindsightFake`: an in-memory server for tests, with `assertRetained()`, `assertNotRetained()`, `assertNothingRetained()`, `assertRecalled()`, `assertNotRecalled()` and `assertReflected()`. It follows the server where tests depend on it: a bank nobody wrote to answers 404, tag filters select the same memories, a retain with a document ID replaces the document, an async retain repeated with the same operation ID stores nothing new, and retains the server rejects are rejected with the same status. `unavailable()` simulates an outage, `respondTo()` stubs other endpoints.
+- `RetainMemory` job and `Memory::queue()`: store memories from a queue worker, retried with backoff while the Hindsight API is unavailable (six attempts over about 36 minutes by default; only a failure on the last attempt is reported). Every attempt sends the operation ID the job got when it was dispatched, so a retry never stores a memory twice, and the dispatch time as the memory's timestamp. Errors a retry cannot fix fail the job at once and are reported.
+- `queue` section in `config/hindsight.php`: connection, queue, tries, backoff and payload encryption.
 - Bank aliases: `listBankAliases()`, `addBankAlias()`, `setPrimaryBankAlias()` and `removeBankAlias()`, on the client and the facade.
 - `retryOperation()` to queue a failed or cancelled operation again.
-- CI also runs the integration suite against Hindsight 1.2.0.
+- CI also runs the integration suite against Hindsight 1.2.0, and compares the fake with real 1.1.0 and 1.2.0 servers.
+
+### Changed
+
+- `Hindsight` is no longer `final`, so `HindsightFake` can stand in for it. Other subclasses are not supported.
 
 ## [0.1.0] - 2026-10-30
 

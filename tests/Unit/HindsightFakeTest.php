@@ -8,12 +8,14 @@ use Fedoseev\Hindsight\Exceptions\ApiException;
 use Fedoseev\Hindsight\Exceptions\ConnectionException;
 use Fedoseev\Hindsight\Exceptions\NotFoundException;
 use Fedoseev\Hindsight\Exceptions\OperationFailedException;
+use Fedoseev\Hindsight\Exceptions\ValidationException;
 use Fedoseev\Hindsight\Hindsight;
 use Fedoseev\Hindsight\Responses\OperationStatus;
 use Fedoseev\Hindsight\TagsMatch;
 use Fedoseev\Hindsight\Testing\FakeServer;
 use Fedoseev\Hindsight\Testing\HindsightFake;
 use Fedoseev\Hindsight\Tests\Support\ContractCheckingClient;
+use Closure;
 use LogicException;
 use PHPUnit\Framework\AssertionFailedError;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -121,6 +123,52 @@ final class HindsightFakeTest extends TestCase
         } catch (ApiException $exception) {
             $this->assertSame(409, $exception->statusCode);
         }
+    }
+
+    /**
+     * @param  Closure(Hindsight, string): mixed  $call
+     */
+    #[DataProvider('rejectedRetains')]
+    public function test_it_rejects_retains_the_server_rejects(Closure $call, int $status, ?string $field): void
+    {
+        $fake = new HindsightFake;
+
+        try {
+            $call($fake, 'b');
+            $this->fail('Expected the retain to be rejected.');
+        } catch (ApiException $exception) {
+            $this->assertSame($status, $exception->statusCode);
+
+            if ($field !== null) {
+                $this->assertInstanceOf(ValidationException::class, $exception);
+                $this->assertArrayHasKey($field, $exception->errors());
+            }
+        }
+
+        $fake->assertNothingRetained();
+    }
+
+    /**
+     * The same table runs against a real server in the integration suite.
+     *
+     * @return iterable<string, array{0: Closure(Hindsight, string): mixed, 1: int, 2: string|null}>
+     */
+    public static function rejectedRetains(): iterable
+    {
+        yield 'operation_id that is not a UUID' => [fn (Hindsight $h, string $bank) => $h->retain($bank, 'x', async: true, operationId: 'retry-1'), 422, 'body.operation_id'];
+        yield 'unknown update_mode' => [fn (Hindsight $h, string $bank) => $h->retain($bank, 'x', documentId: 'doc', updateMode: 'merge'), 422, 'body.items.0.update_mode'];
+        yield 'metadata value that is not a string' => [fn (Hindsight $h, string $bank) => $h->retainBatch($bank, [['content' => 'x', 'metadata' => ['attempt' => 2]]]), 422, 'body.items.0.metadata.attempt'];
+        yield 'append without a document_id' => [fn (Hindsight $h, string $bank) => $h->retain($bank, 'x', updateMode: 'append'), 400, null];
+    }
+
+    public function test_callbacks_may_return_any_truthy_value(): void
+    {
+        $fake = new HindsightFake(['b' => []]);
+        $fake->retain('b', 'Lives in Rotterdam.');
+        $fake->recall('b', 'Where does Alice live?');
+
+        $fake->assertRetained('b', fn (string $content) => preg_match('/Rotterdam/', $content));
+        $fake->assertRecalled('b', fn (string $query) => strpos($query, 'live'));
     }
 
     public function test_async_operations_finish_at_once(): void

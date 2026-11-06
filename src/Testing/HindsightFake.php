@@ -17,7 +17,9 @@ use PHPUnit\Framework\Assert as PHPUnit;
  * Recall finds the memories you seed and everything retained during the test. The fake follows the server's
  * rules where they decide what a test sees: a bank nobody wrote to answers 404, tag filters work like
  * Hindsight's, a retain with a document_id replaces that document, and an async retain repeated with the same
- * operation_id stores nothing. It does not extract facts (a retained item is one memory with its text as
+ * operation_id stores nothing. It rejects what the server rejects before doing any work: 422 for an operation_id
+ * that is not a UUID, an unknown update_mode or a metadata value that is not a string, and 400 for an append
+ * without a document_id. It does not extract facts (a retained item is one memory with its text as
  * sent), does not rank, and finishes async work at once. Reflect answers with the text set by reflectUsing().
  */
 final class HindsightFake extends Hindsight
@@ -169,7 +171,7 @@ final class HindsightFake extends Hindsight
         $items = [];
 
         foreach ($this->server->retained() as $retained) {
-            if ($retained['bank'] === $bankId && ($callback === null || $callback($retained['item']['content'] ?? null, $retained['item']) === true)) {
+            if ($retained['bank'] === $bankId && ($callback === null || (bool) $callback($retained['item']['content'] ?? null, $retained['item']))) {
                 $items[] = $retained['item'];
             }
         }
@@ -218,7 +220,7 @@ final class HindsightFake extends Hindsight
 
             $query = is_string($request['body']['query'] ?? null) ? $request['body']['query'] : '';
 
-            if ($callback === null || $callback($query, $request['body']) === true) {
+            if ($callback === null || (bool) $callback($query, $request['body'])) {
                 $bodies[] = $request['body'];
             }
         }

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Fedoseev\Hindsight\Tests\Laravel;
 
 use Fedoseev\Hindsight\Exceptions\AuthenticationException;
+use Fedoseev\Hindsight\Exceptions\ConfigurationException;
 use Fedoseev\Hindsight\Exceptions\ConnectionException;
 use Fedoseev\Hindsight\Hindsight;
 use Fedoseev\Hindsight\Laravel\Ai\Memory;
@@ -18,6 +19,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Str;
 use LogicException;
 use Psr\Http\Client\ClientInterface;
 use Psr\Http\Message\RequestInterface;
@@ -33,6 +35,8 @@ final class QueuedRetainTest extends TestCase
         $app['config']->set('queue.default', 'database');
         $app['config']->set('queue.failed.driver', 'database-uuids');
         $app['config']->set('queue.failed.database', 'testing');
+        // Encrypted payloads need an application key, as every Laravel application has.
+        $app['config']->set('app.key', 'base64:'.base64_encode(random_bytes(32)));
     }
 
     protected function defineDatabaseMigrations(): void
@@ -73,7 +77,7 @@ final class QueuedRetainTest extends TestCase
 
         $this->work();
         $this->assertSame(1, (int) DB::table('jobs')->sole()->attempts, 'The worker saw a failure and released the job.');
-        Exceptions::assertReported(ConnectionException::class);
+        Exceptions::assertNothingReported();
 
         $this->travel(11)->seconds();
         $this->work();
@@ -96,6 +100,15 @@ final class QueuedRetainTest extends TestCase
         $this->assertSame(1, DB::table('failed_jobs')->count());
         Exceptions::assertReported(AuthenticationException::class);
         $fake->assertNothingRetained();
+    }
+
+    public function test_the_default_retry_policy_spans_about_half_an_hour(): void
+    {
+        $job = new RetainMemory('b', 'x');
+
+        $this->assertSame(6, $job->tries);
+        // Five waits between six attempts, as Worker::calculateBackoff() repeats the last step: 2,170 seconds.
+        $this->assertSame([10, 60, 300, 900], $job->backoff);
     }
 
     public function test_the_job_carries_its_retry_policy_and_the_time_it_was_dispatched(): void
@@ -148,7 +161,7 @@ final class QueuedRetainTest extends TestCase
         $fake->assertNothingRetained();
         Queue::assertPushed(RetainMemory::class, fn (RetainMemory $job): bool => $job->bankId === 'user-1'
             && $job->content === "USER: When does my plan renew?\nASSISTANT: Your plan renews on 1 December."
-            && $job->tags === ['user:1']
+            && $job->memoryTags === ['user:1']
             && $job->documentId === 'conversation-7'
             && $job->updateMode === 'append'
             && $job->context === 'Support chat'
@@ -175,6 +188,130 @@ final class QueuedRetainTest extends TestCase
 
         $fake->assertRetained('user-1', fn (string $content): bool => str_contains($content, 'contact me by email'));
         $this->assertSame(["USER: Please contact me by email.\nASSISTANT: Noted: email it is."], $fake->recall('user-1', 'contact')->texts());
+    }
+
+    public function test_only_a_failure_on_the_last_attempt_is_reported(): void
+    {
+        config(['hindsight.queue.tries' => 3]);
+        Exceptions::fake();
+        $fake = HindsightFacade::fake()->unavailable();
+
+        RetainMemory::dispatch('user-1', 'Prefers email over phone.');
+
+        $this->work();
+        $this->travel(11)->seconds();
+        $this->work();
+        Exceptions::assertNothingReported();
+        $this->assertSame(60, DB::table('jobs')->sole()->available_at - Carbon::now()->getTimestamp(), 'Second step of the backoff.');
+
+        $this->travel(61)->seconds();
+        $this->work();
+
+        Exceptions::assertReportedCount(1);
+        Exceptions::assertReported(ConnectionException::class);
+        $this->assertSame(0, DB::table('jobs')->count());
+        $this->assertSame(1, DB::table('failed_jobs')->count());
+        $fake->assertNothingRetained();
+    }
+
+    public function test_408_429_and_5xx_are_temporary(): void
+    {
+        $fake = HindsightFacade::fake();
+
+        foreach ([408, 429, 500, 503] as $status) {
+            $fake->unavailable(times: 1, status: $status);
+            RetainMemory::dispatch('user-1', "After a {$status}.");
+            $this->work();
+            $this->assertSame(1, DB::table('jobs')->count(), "{$status} released the job.");
+
+            $this->travel(11)->seconds();
+            $this->work();
+            $this->assertSame(0, DB::table('jobs')->count(), "Stored after the {$status}.");
+        }
+
+        $fake->assertRetained('user-1', 4);
+    }
+
+    public function test_a_malformed_url_fails_the_job_at_once(): void
+    {
+        config(['hindsight.url' => 'localhost:8888']);
+        $this->app->forgetInstance(Hindsight::class);
+        Exceptions::fake();
+
+        RetainMemory::dispatch('user-1', 'Prefers email over phone.');
+        $this->work();
+
+        $this->assertSame(0, DB::table('jobs')->count());
+        $this->assertSame(1, DB::table('failed_jobs')->count());
+        Exceptions::assertReported(ConfigurationException::class);
+    }
+
+    public function test_operation_ids_stay_unique_when_laravel_uuids_are_frozen(): void
+    {
+        Str::freezeUuids();
+
+        try {
+            $first = new RetainMemory('user-1', 'One.');
+            $second = new RetainMemory('user-1', 'Two.');
+        } finally {
+            Str::createUuidsNormally();
+        }
+
+        $this->assertNotSame($first->operationId, $second->operationId);
+        $this->assertMatchesRegularExpression('/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/', $first->operationId);
+    }
+
+    public function test_the_payload_can_be_encrypted(): void
+    {
+        RetainMemory::dispatch('user-1', 'Plain text in the queue.');
+        config(['hindsight.queue.encrypt' => true]);
+        RetainMemory::dispatch('user-1', 'Secret in the queue.');
+
+        [$plain, $encrypted] = DB::table('jobs')->orderBy('id')->pluck('payload')->all();
+        $this->assertStringContainsString('Plain text in the queue.', $plain);
+        $this->assertStringNotContainsString('Secret in the queue.', $encrypted);
+
+        $fake = HindsightFacade::fake();
+        $this->work();
+        $this->work();
+        $fake->assertRetained('user-1', fn (string $content): bool => $content === 'Secret in the queue.');
+    }
+
+    public function test_on_the_sync_driver_errors_reach_the_run(): void
+    {
+        config(['queue.default' => 'sync']);
+        SupportAgent::fake(['Hi!', 'Hi again!']);
+        Exceptions::fake();
+        $fake = HindsightFacade::fake(['b' => []]);
+
+        // A 401 is thrown when the agent asks for that, as without queue().
+        $fake->unavailable(times: 1, status: 401);
+        try {
+            (new SupportAgent([Memory::bank('b')->withoutRecall()->throwOnError()->queue()]))->prompt('Hello');
+            $this->fail('Expected the 401.');
+        } catch (AuthenticationException) {
+        }
+
+        // There are no retries on sync: a 503 is reported once and the exchange is not stored.
+        $fake->unavailable(times: 1, status: 503);
+        (new SupportAgent([Memory::bank('b')->withoutRecall()->queue()]))->prompt('Hello again');
+
+        Exceptions::assertReportedCount(1);
+        $fake->assertNothingRetained();
+    }
+
+    public function test_queue_cannot_be_combined_with_using(): void
+    {
+        $client = new Hindsight('http://tenant.test');
+
+        foreach ([fn () => Memory::bank('b')->using($client)->queue(), fn () => Memory::bank('b')->queue()->using($client)] as $call) {
+            try {
+                $call();
+                $this->fail('Expected a LogicException.');
+            } catch (LogicException $exception) {
+                $this->assertStringContainsString('resolves the client from the container in the worker', $exception->getMessage());
+            }
+        }
     }
 
     public function test_a_queued_retain_is_always_async(): void

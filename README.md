@@ -31,6 +31,9 @@ class SupportAgent implements Agent, HasMiddleware
 
 Monday: *"I'm on the Pro plan and I prefer short answers."* Friday, in a new conversation: *"When does my plan renew?"* The agent already knows the plan and answers briefly.
 
+- **Memory that waits out an outage.** With `->queue()`, each exchange is stored by a queued job that retries while the Hindsight API is unavailable. Every attempt sends the same operation ID, so a retry never stores a memory twice.
+- **Tests without a server.** `Hindsight::fake()` replaces the client with an in-memory server and gives you `assertRetained()` and `assertRecalled()`. CI runs the same calls on the fake and on real Hindsight servers and compares the answers.
+
 This is a community package. It is not affiliated with Vectorize, the company behind Hindsight.
 
 ## Contents
@@ -40,6 +43,7 @@ This is a community package. It is not affiliated with Vectorize, the company be
 - [The client](#the-client)
 - [Laravel](#laravel)
 - [Memory for Laravel AI SDK agents](#memory-for-laravel-ai-sdk-agents)
+- [Queued retains](#queued-retains)
 - [Errors](#errors)
 - [Testing your application](#testing-your-application)
 - [How this package is tested](#how-this-package-is-tested)
@@ -295,6 +299,7 @@ public function middleware(): array
 | `context($text)` | Describe the source of the conversations. |
 | `withoutRecall()` / `withoutRetain()` | Use only one half. |
 | `retainSynchronously()` | Wait for fact extraction. By default retains are async, so the user does not wait. |
+| `queue($connection, $queue)` | Store each exchange from a queue worker, with retries. See [Queued retains](#queued-retains). |
 | `timeout($seconds)` | How long to wait for Hindsight. Default 10 seconds for recall and async retains; a synchronous retain uses the client's timeout. |
 | `throwOnError()` | Fail the run when Hindsight fails. See below. |
 | `using($client)` | Use a specific client instead of the container's. |
@@ -328,6 +333,54 @@ Each tool takes `tags()` (strict by default, like the middleware), `timeout()`, 
 
 The middleware and the tools work together. A common setup is the middleware for automatic memory plus `Retain` for facts the agent should keep on purpose.
 
+## Queued retains
+
+By default the middleware stores each exchange during the run, and when the Hindsight API is unavailable that exchange is lost: the error is reported and the agent goes on. Add `queue()` and the exchange is stored by a queued job instead:
+
+```php
+public function middleware(): array
+{
+    return [Memory::bank("user-{$this->user->id}")->queue()];
+}
+```
+
+The job is `Fedoseev\Hindsight\Laravel\Jobs\RetainMemory`. You can dispatch it yourself, for example from an event listener:
+
+```php
+use Fedoseev\Hindsight\Laravel\Jobs\RetainMemory;
+
+RetainMemory::dispatch("user-{$user->id}", 'Upgraded to the Pro plan.', tags: ['billing']);
+```
+
+What the job does:
+
+- **Retries while the Hindsight API is unavailable.** A refused connection, a timeout, `408`, `429` or a `5xx` answer sends the job back to the queue: six attempts, 10 seconds, 1, 5, 15 and 15 minutes apart, so a memory gets through an outage of about half an hour. Attempts before the last go back quietly; only a failure on the last attempt is reported, so an outage does not report six exceptions per memory.
+- **Never stores a memory twice.** The job gets an operation ID when it is dispatched and sends it with every attempt. Hindsight treats an async retain with an operation ID it has already seen as the same operation, so a retry after a lost answer adds nothing. That includes two attempts at the same moment: [Hindsight's own tests](https://github.com/vectorize-io/hindsight/blob/v1.2.0/hindsight-api-slim/tests/test_async_retain_operation_id.py) cover simultaneous submissions with one ID. The ID comes from `random_bytes()`, not `Str::uuid()`, so `Str::freezeUuids()` in your tests does not give every job the same one.
+- **Keeps the time of the conversation.** The job sends the time it was dispatched as the memory's timestamp, so an exchange that waited in the queue during an outage is not dated by the moment a worker got to it.
+- **Fails at once when a retry cannot help.** A wrong API key (`401`/`403`), a rejected request (other `4xx`) or a malformed `HINDSIGHT_URL` fails the job without retries and reports the exception, so it reaches your error tracker and not only the `failed_jobs` table.
+
+The job is done once Hindsight has accepted the retain. Fact extraction then runs on the server, and if it fails there, for example because the server's LLM provider is down, the server retries a few times and marks the operation failed. The job cannot see that. Find such operations with `listOperations($bank, status: 'failed')` and queue them again with `retryOperation()`.
+
+Set the connection, queue and retry policy in `config/hindsight.php`, or pass the connection and queue to `queue()`:
+
+```dotenv
+HINDSIGHT_QUEUE_CONNECTION=redis
+HINDSIGHT_QUEUE=memory
+HINDSIGHT_QUEUE_TRIES=6
+HINDSIGHT_QUEUE_ENCRYPT=true   # the job carries the conversation; encrypt it in the queue with APP_KEY
+```
+
+```php
+Memory::bank('support')->queue('redis', 'memory');
+```
+
+Some combinations behave differently:
+
+- Queued retains are always async on the server, so `queue()` and `retainSynchronously()` cannot be combined.
+- The worker gets the client from the container, so `queue()` cannot be combined with `using()`. Bind the client you need as `Fedoseev\Hindsight\Hindsight` instead.
+- On the `sync` queue driver there are no retries: the job runs once during the run, and its errors are reported, or thrown with `throwOnError()`, as without `queue()`.
+- With `document()`, exchanges of one conversation can be appended out of order when an attempt is retried or several workers run. Each exchange is sent with the time it was dispatched.
+
 ## Errors
 
 Every exception implements `Fedoseev\Hindsight\Exceptions\HindsightException`.
@@ -351,28 +404,57 @@ Hindsight API error 422: body.items.0.content: Field required
 
 ## Testing your application
 
-Bind a fake PSR-18 client, for example Guzzle's `MockHandler`, before the client is first used, and nothing leaves your test:
+`Hindsight::fake()` replaces the client with an in-memory server. Seed what recall should find, run your code, then assert what was stored and searched:
 
 ```php
-use GuzzleHttp\Client;
-use GuzzleHttp\Handler\MockHandler;
-use GuzzleHttp\HandlerStack;
-use GuzzleHttp\Psr7\Response;
+use Fedoseev\Hindsight\Laravel\Facades\Hindsight;
 
-$mock = new MockHandler([
-    new Response(200, [], json_encode(['results' => [['id' => 'f1', 'text' => 'Alice is on the Pro plan']]])),
-    new Response(200, [], json_encode(['success' => true, 'bank_id' => 'user-1', 'items_count' => 1, 'async' => true])),
-]);
+public function test_the_agent_uses_what_it_remembers(): void
+{
+    Hindsight::fake([
+        'user-1' => ['Alice is on the Pro plan'],
+    ]);
+    SupportAgent::fake(['Your Pro plan renews on 1 December.']);
 
-$this->app->instance('hindsight.http', new Client(['handler' => HandlerStack::create($mock)]));
+    (new SupportAgent($alice))->prompt('When does my plan renew?');
+
+    Hindsight::assertRecalled('user-1', fn (string $query) => $query === 'When does my plan renew?');
+    Hindsight::assertRetained('user-1', fn (string $content) => str_contains($content, 'renews on 1 December'));
+}
 ```
 
-Combine it with `SupportAgent::fake([...])` from the Laravel AI SDK to test an agent with memory without any network calls.
+The middleware, the tools and the `RetainMemory` job get the client from the container, so they all use the fake. Outside Laravel, create `new HindsightFake([...])` from `Fedoseev\Hindsight\Testing` and pass it wherever you pass the client.
+
+| Method | What it does |
+|---|---|
+| `assertRetained($bank, $callback)` | A memory was stored in the bank. The callback gets the content and the item with the API's keys (`tags`, `document_id`, …) and returns whether it is the one; any truthy value counts. Pass an integer instead to assert how many. |
+| `assertNotRetained($bank, $callback)`, `assertNothingRetained()` | The opposite. |
+| `assertRecalled($bank, $callback)`, `assertNotRecalled($bank)` | The bank was searched. The callback gets the query and the request. |
+| `assertReflected($bank, $callback)` | Reflect was called on the bank. |
+| `retained($bank)`, `recalls($bank)` | What was stored and searched, to inspect it yourself. |
+| `remember($bank, ...$memories)` | Seed more memories. A memory is its text, or an array such as `['text' => '…', 'tags' => ['user:1'], 'type' => 'experience']`. |
+| `reflectUsing($answer)` | What reflect answers: a string, or a closure that gets the query and the bank. |
+| `unavailable($times, $status)`, `available()` | Make requests fail as if Hindsight were down: a refused connection, or `$status` such as `503`. Without `$times`, until `available()`. |
+| `respondTo($method, $path, $response)` | Answer an endpoint the fake does not simulate. `*` matches one path segment. |
+
+The fake follows the server where a test depends on it:
+
+- A bank nobody wrote to answers `404` with the server's message, so you test the first conversation of a new user as it will happen.
+- Tag filters (`any`, `all`, `any_strict`, `all_strict`, `exact`) select the same memories as on the server.
+- A retain with a `document_id` replaces that document unless it appends.
+- An async retain repeated with the same operation ID stores nothing new, and an operation ID used in another bank answers `409`.
+- What the server rejects before doing any work is rejected too: `422` for an operation ID that is not a UUID, an unknown `update_mode` or a metadata value that is not a string, and `400` for an append without a `document_id`.
+
+It is simpler than the server on purpose: a stored item becomes one memory with its text as sent (no fact extraction), recall returns every memory that passes the filters in the order they were stored (no ranking, no token budget), and async work is finished at once. An endpoint the fake does not simulate throws a `LogicException` instead of answering something made up.
+
+To check a single HTTP call yourself, bind any PSR-18 client as `hindsight.http` before the client is first used, for example Guzzle's `MockHandler`.
 
 ## How this package is tested
 
 - **Every request in the unit tests is checked against Hindsight's own [OpenAPI document](tests/Fixtures/openapi-1.1.0.json)**, downloaded from the `v1.1.0` tag. The check is stricter than the server: Hindsight answers `200` for unknown fields, so a misspelled field name in the client would never fail a request. The tests reject it. Response fixtures are checked against the same document.
 - **CI starts real Hindsight 1.1.0 and 1.2.0 servers** (`hindsight-api-slim` with local ONNX embeddings and no LLM) and runs the integration suite against it, including a Laravel AI agent that remembers a fact from one conversation in the next. The job runs on every push and weekly, so a new Hindsight release that breaks something shows up quickly.
+- **The fake is checked against the same OpenAPI document and against real servers.** A unit test sends a call to every endpoint the fake simulates and validates each request and successful answer against the schema. The integration suite runs the same tag filters, document replacement, missing bank and rejected retains on the fake and on real Hindsight 1.1.0 and 1.2.0, and compares the results.
+- **Queued retains run through Laravel's `queue:work --once` command** on the database queue driver, inside the test process with time travel: a job released while Hindsight answers `503` is stored once it is back, a retry after a lost answer sends the same operation ID, only the last failed attempt is reported, and a `401` fails the job without retries. Against a real server, a job run twice is one operation and one memory, while the same async retain sent twice without an operation ID stores two copies.
 - PHPStan at level 9. The client reads response fields without trusting their types, so an unexpected value from the server becomes `null` instead of a `TypeError`.
 
 Without an LLM the server cannot run reflect or mental models, so those are covered by the OpenAPI-checked unit tests only.

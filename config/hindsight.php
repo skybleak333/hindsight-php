@@ -47,16 +47,19 @@ return [
     |
     | Used by the RetainMemory job and by Memory::bank(...)->queue(). A failed
     | attempt (connection error, timeout, 429 or 5xx) is retried after the
-    | backoff, in seconds. Leave the connection and queue empty to use your
-    | application's defaults.
+    | backoff, in seconds; Laravel repeats the last step for later attempts.
+    | Leave the connection and queue empty to use your application's defaults.
     |
     */
 
     'queue' => [
         'connection' => env('HINDSIGHT_QUEUE_CONNECTION'),
         'queue' => env('HINDSIGHT_QUEUE'),
-        'tries' => (int) env('HINDSIGHT_QUEUE_TRIES', 5),
-        'backoff' => [10, 30, 60, 120],
+        'tries' => (int) env('HINDSIGHT_QUEUE_TRIES', 6),
+        // The last step repeats: six attempts span about 36 minutes.
+        'backoff' => [10, 60, 300, 900],
+        // The job carries the conversation text. Encrypt it while it waits in the queue (uses APP_KEY).
+        'encrypt' => (bool) env('HINDSIGHT_QUEUE_ENCRYPT', false),
     ],
 
 ];
