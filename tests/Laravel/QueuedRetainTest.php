@@ -47,6 +47,8 @@ final class QueuedRetainTest extends TestCase
 
     public function test_a_retain_that_fails_while_hindsight_is_down_is_stored_once_it_is_back(): void
     {
+        // Frozen, so a second that ticks over between the release and the assertion cannot change the delay.
+        $this->freezeTime();
         $fake = HindsightFacade::fake()->unavailable(status: 503);
         RetainMemory::dispatch('user-1', 'Prefers email over phone.', tags: ['user:1']);
 
@@ -194,6 +196,7 @@ final class QueuedRetainTest extends TestCase
     public function test_only_a_failure_on_the_last_attempt_is_reported(): void
     {
         config(['hindsight.queue.tries' => 3]);
+        $this->freezeTime();
         Exceptions::fake();
         Log::spy();
         $fake = HindsightFacade::fake()->unavailable();
