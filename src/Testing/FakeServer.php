@@ -239,8 +239,9 @@ final class FakeServer implements ClientInterface
     }
 
     /**
-     * The checks of the server's request model (MemoryItem, RetainRequest) and of _validate_retain_update_modes,
-     * Hindsight 1.2.0, for the fields a client sets. The 422 body has FastAPI's shape.
+     * Some checks of the server's request model (MemoryItem, RetainRequest) and of _validate_retain_update_modes,
+     * Hindsight 1.2.0: operation_id, content, timestamp, tags, update_mode and metadata. The 422 body has
+     * FastAPI's shape. Other fields are not checked.
      *
      * @param  array<string, mixed>  $body
      * @param  list<mixed>  $items
@@ -267,6 +268,18 @@ final class FakeServer implements ClientInterface
                 $errors[] = self::error(['body', 'items', $index, 'update_mode'], 'literal_error', "Input should be 'replace' or 'append'", $mode);
             }
 
+            $timestamp = $item['timestamp'] ?? null;
+
+            if ($timestamp !== null && $timestamp !== '' && ! self::validTimestamp($timestamp)) {
+                $errors[] = self::error(['body', 'items', $index, 'timestamp'], 'value_error', 'Value error, Invalid timestamp/event_date format', $timestamp);
+            }
+
+            foreach (is_array($item['tags'] ?? null) ? array_values($item['tags']) : [] as $position => $tag) {
+                if (! is_string($tag)) {
+                    $errors[] = self::error(['body', 'items', $index, 'tags', $position], 'string_type', 'Input should be a valid string', $tag);
+                }
+            }
+
             foreach (is_array($item['metadata'] ?? null) ? $item['metadata'] : [] as $key => $value) {
                 if (! is_string($value)) {
                     $errors[] = self::error(['body', 'items', $index, 'metadata', $key], 'string_type', 'Input should be a valid string', $value);
@@ -285,6 +298,34 @@ final class FakeServer implements ClientInterface
         }
 
         return null;
+    }
+
+    /**
+     * What MemoryItem.validate_timestamp accepts, for the ISO 8601 forms clients send: a date, or a date and time
+     * with optional seconds, fraction and offset ("Z" or ±hh:mm), or "unset". Years 1 and 9999 are placeholders
+     * and rejected. Python's fromisoformat() takes a few rarer forms too; the fake does not.
+     */
+    private static function validTimestamp(mixed $timestamp): bool
+    {
+        if (! is_string($timestamp)) {
+            return false;
+        }
+
+        if (strtolower($timestamp) === 'unset') {
+            return true;
+        }
+
+        $pattern = '/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2})(?::(\d{2})(?::(\d{2})(?:[.,]\d{1,6})?)?)?(?:Z|[+-]\d{2}(?::?\d{2})?)?)?$/';
+
+        if (preg_match($pattern, $timestamp, $parts) !== 1) {
+            return false;
+        }
+
+        [$year, $month, $day] = [(int) $parts[1], (int) $parts[2], (int) $parts[3]];
+
+        return checkdate($month, $day, $year)
+            && ! in_array($year, [1, 9999], true)
+            && (int) ($parts[4] ?? 0) < 24 && (int) ($parts[5] ?? 0) < 60 && (int) ($parts[6] ?? 0) < 60;
     }
 
     /**

@@ -18,6 +18,7 @@ use GuzzleHttp\Exception\ConnectException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Exceptions;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use LogicException;
@@ -194,6 +195,7 @@ final class QueuedRetainTest extends TestCase
     {
         config(['hindsight.queue.tries' => 3]);
         Exceptions::fake();
+        Log::spy();
         $fake = HindsightFacade::fake()->unavailable();
 
         RetainMemory::dispatch('user-1', 'Prefers email over phone.');
@@ -212,6 +214,7 @@ final class QueuedRetainTest extends TestCase
         $this->assertSame(0, DB::table('jobs')->count());
         $this->assertSame(1, DB::table('failed_jobs')->count());
         $fake->assertNothingRetained();
+        Log::shouldHaveReceived('warning')->twice()->withArgs(fn (string $message): bool => str_contains($message, 'Hindsight retain for bank [user-1] failed on attempt'));
     }
 
     public function test_408_429_and_5xx_are_temporary(): void

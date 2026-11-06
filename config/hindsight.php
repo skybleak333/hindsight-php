@@ -46,8 +46,8 @@ return [
     |--------------------------------------------------------------------------
     |
     | Used by the RetainMemory job and by Memory::bank(...)->queue(). A failed
-    | attempt (connection error, timeout, 429 or 5xx) is retried after the
-    | backoff, in seconds; Laravel repeats the last step for later attempts.
+    | attempt (connection error, timeout, 408, 429 or 5xx) is retried after
+    | the backoff, in seconds; the last step repeats for later attempts.
     | Leave the connection and queue empty to use your application's defaults.
     |
     */

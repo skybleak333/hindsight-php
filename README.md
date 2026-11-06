@@ -354,7 +354,7 @@ RetainMemory::dispatch("user-{$user->id}", 'Upgraded to the Pro plan.', tags: ['
 
 What the job does:
 
-- **Retries while the Hindsight API is unavailable.** A refused connection, a timeout, `408`, `429` or a `5xx` answer sends the job back to the queue: six attempts, 10 seconds, 1, 5, 15 and 15 minutes apart, so a memory gets through an outage of about half an hour. Attempts before the last go back quietly; only a failure on the last attempt is reported, so an outage does not report six exceptions per memory.
+- **Retries while the Hindsight API is unavailable.** A refused connection, a timeout, `408`, `429` or a `5xx` answer sends the job back to the queue: six attempts, 10 seconds, 1, 5, 15 and 15 minutes apart, so a memory gets through an outage of about half an hour. Attempts before the last go back with a warning in the log; only a failure on the last attempt is reported, so an outage does not send six exceptions per memory to your error tracker.
 - **Never stores a memory twice.** The job gets an operation ID when it is dispatched and sends it with every attempt. Hindsight treats an async retain with an operation ID it has already seen as the same operation, so a retry after a lost answer adds nothing. That includes two attempts at the same moment: [Hindsight's own tests](https://github.com/vectorize-io/hindsight/blob/v1.2.0/hindsight-api-slim/tests/test_async_retain_operation_id.py) cover simultaneous submissions with one ID. The ID comes from `random_bytes()`, not `Str::uuid()`, so `Str::freezeUuids()` in your tests does not give every job the same one.
 - **Keeps the time of the conversation.** The job sends the time it was dispatched as the memory's timestamp, so an exchange that waited in the queue during an outage is not dated by the moment a worker got to it.
 - **Fails at once when a retry cannot help.** A wrong API key (`401`/`403`), a rejected request (other `4xx`) or a malformed `HINDSIGHT_URL` fails the job without retries and reports the exception, so it reaches your error tracker and not only the `failed_jobs` table.
@@ -378,7 +378,7 @@ Some combinations behave differently:
 
 - Queued retains are always async on the server, so `queue()` and `retainSynchronously()` cannot be combined.
 - The worker gets the client from the container, so `queue()` cannot be combined with `using()`. Bind the client you need as `Fedoseev\Hindsight\Hindsight` instead.
-- On the `sync` queue driver there are no retries: the job runs once during the run, and its errors are reported, or thrown with `throwOnError()`, as without `queue()`.
+- On the `sync` queue driver there are no retries: the job runs once during the run, and its errors are reported, or thrown with `throwOnError()`, as without `queue()`. The `deferred` and `background` drivers are built on `sync`: they also run the job once, after the response, where `throwOnError()` has no effect.
 - With `document()`, exchanges of one conversation can be appended out of order when an attempt is retried or several workers run. Each exchange is sent with the time it was dispatched.
 
 ## Errors
@@ -443,7 +443,7 @@ The fake follows the server where a test depends on it:
 - Tag filters (`any`, `all`, `any_strict`, `all_strict`, `exact`) select the same memories as on the server.
 - A retain with a `document_id` replaces that document unless it appends.
 - An async retain repeated with the same operation ID stores nothing new, and an operation ID used in another bank answers `409`.
-- What the server rejects before doing any work is rejected too: `422` for an operation ID that is not a UUID, an unknown `update_mode` or a metadata value that is not a string, and `400` for an append without a `document_id`.
+- These retains are rejected with the server's status: `422` for an operation ID that is not a UUID, a timestamp that is not ISO 8601 (or `unset`), a tag or metadata value that is not a string, or an unknown `update_mode`, and `400` for an append without a `document_id`. Other invalid fields are not checked.
 
 It is simpler than the server on purpose: a stored item becomes one memory with its text as sent (no fact extraction), recall returns every memory that passes the filters in the order they were stored (no ranking, no token budget), and async work is finished at once. An endpoint the fake does not simulate throws a `LogicException` instead of answering something made up.
 

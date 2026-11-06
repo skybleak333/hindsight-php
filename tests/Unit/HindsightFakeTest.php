@@ -158,7 +158,30 @@ final class HindsightFakeTest extends TestCase
         yield 'operation_id that is not a UUID' => [fn (Hindsight $h, string $bank) => $h->retain($bank, 'x', async: true, operationId: 'retry-1'), 422, 'body.operation_id'];
         yield 'unknown update_mode' => [fn (Hindsight $h, string $bank) => $h->retain($bank, 'x', documentId: 'doc', updateMode: 'merge'), 422, 'body.items.0.update_mode'];
         yield 'metadata value that is not a string' => [fn (Hindsight $h, string $bank) => $h->retainBatch($bank, [['content' => 'x', 'metadata' => ['attempt' => 2]]]), 422, 'body.items.0.metadata.attempt'];
+        yield 'timestamp that is not ISO 8601' => [fn (Hindsight $h, string $bank) => $h->retain($bank, 'x', timestamp: 'yesterday at noon'), 422, 'body.items.0.timestamp'];
+        yield 'placeholder year' => [fn (Hindsight $h, string $bank) => $h->retain($bank, 'x', timestamp: '9999-12-31T00:00:00Z'), 422, 'body.items.0.timestamp'];
+        yield 'tag that is not a string' => [fn (Hindsight $h, string $bank) => $h->retainBatch($bank, [['content' => 'x', 'tags' => ['a', 42]]]), 422, 'body.items.0.tags.1'];
         yield 'append without a document_id' => [fn (Hindsight $h, string $bank) => $h->retain($bank, 'x', updateMode: 'append'), 400, null];
+    }
+
+    /**
+     * @return iterable<string, array{0: string}>
+     */
+    public static function acceptedTimestamps(): iterable
+    {
+        foreach (['2026-11-06', '2026-11-06T09:30', '2026-11-06T09:30:00Z', '2026-11-06 09:30:00.123456+02:00', 'unset', 'UNSET'] as $timestamp) {
+            yield $timestamp => [$timestamp];
+        }
+    }
+
+    #[DataProvider('acceptedTimestamps')]
+    public function test_it_accepts_timestamps_the_server_accepts(string $timestamp): void
+    {
+        $fake = new HindsightFake;
+
+        $fake->retain('b', 'x', timestamp: $timestamp);
+
+        $fake->assertRetained('b', 1);
     }
 
     public function test_callbacks_may_return_any_truthy_value(): void

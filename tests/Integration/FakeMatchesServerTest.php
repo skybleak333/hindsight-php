@@ -98,6 +98,14 @@ final class FakeMatchesServerTest extends TestCase
         $this->assertSame($answers['server'], $answers['fake']);
     }
 
+    #[DataProviderExternal(HindsightFakeTest::class, 'acceptedTimestamps')]
+    public function test_accepted_timestamps(string $timestamp): void
+    {
+        foreach (['server' => $this->hindsight, 'fake' => new HindsightFake] as $name => $client) {
+            $this->assertSame(1, $client->retain($this->newBank(), self::PREFIX.'dated', timestamp: $timestamp)->itemsCount, $name);
+        }
+    }
+
     public function test_a_bank_nobody_wrote_to(): void
     {
         $bank = $this->newBank();

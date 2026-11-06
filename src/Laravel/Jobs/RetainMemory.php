@@ -16,6 +16,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\Jobs\SyncJob;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Stores a memory from a queue worker, with retries, so a memory written while the Hindsight API is unavailable
@@ -30,10 +31,10 @@ use Illuminate\Queue\Jobs\SyncJob;
  * worker got to it.
  *
  * A refused connection, a timeout, 408, 429 and 5xx are temporary: the attempt is released back to the queue
- * with the backoff from config/hindsight.php, without reporting, and only a failure on the last attempt is
- * reported. Other errors (a wrong API key, a rejected request, a malformed URL) are reported and fail the job
- * at once, because a retry would not change them. On the sync driver, or when handle() is called directly,
- * there is no later attempt, so every error is thrown to the caller.
+ * with the backoff from config/hindsight.php and a warning in the log, without reporting, and only a failure on
+ * the last attempt is reported. Other errors (a wrong API key, a rejected request, a malformed URL) are reported and fail the job
+ * at once, because a retry would not change them. On the sync driver (and the deferred and background drivers
+ * built on it), or when handle() is called directly, there is no later attempt, so every error is thrown.
  *
  * The job succeeds once Hindsight has accepted the retain. Fact extraction then runs on the server; if it
  * fails there, for example because the server's LLM provider is down, the server retries and marks the
@@ -190,9 +191,17 @@ final class RetainMemory implements ShouldQueue
             throw $exception;
         }
 
-        // Earlier attempts go back to the queue without an exception, so an outage is not reported once per attempt.
-        // Laravel's own rule (Worker::calculateBackoff): one step per attempt, then the last step again.
-        $this->release($this->backoff[$this->attempts() - 1] ?? end($this->backoff) ?: 0);
+        // Earlier attempts go back to the queue without an exception, so an outage is not reported once per
+        // attempt. A warning in the log still shows a lasting problem, such as a wrong host, before the last one.
+        // The delay follows Laravel's own rule (Worker::calculateBackoff): one step per attempt, then the last.
+        $delay = $this->backoff[$this->attempts() - 1] ?? end($this->backoff) ?: 0;
+
+        Log::warning("Hindsight retain for bank [{$this->bankId}] failed on attempt {$this->attempts()} of {$this->tries}; retrying in {$delay} seconds.", [
+            'operation_id' => $this->operationId,
+            'exception' => $exception->getMessage(),
+        ]);
+
+        $this->release($delay);
     }
 
     private function failNow(HindsightException $exception): void
