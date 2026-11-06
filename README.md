@@ -66,7 +66,7 @@ Until the package is listed on Packagist, tell Composer where to find it first:
 
 ```bash
 composer config repositories.hindsight-php vcs https://github.com/skybleak333/hindsight-php
-composer require fedoseev/hindsight-php:^0.2
+composer require fedoseev/hindsight-php:^0.3
 ```
 
 The client needs PHP 8.2+ and works in any PHP project. The Laravel integration is discovered automatically. The agent memory needs [`laravel/ai`](https://github.com/laravel/ai) 1.x and PHP 8.3+.
@@ -269,6 +269,10 @@ php artisan vendor:publish --tag=hindsight-config
 ```
 
 To add retries, a proxy or logging, bind your own PSR-18 client as `hindsight.http` before the client is first used.
+
+### Laravel Boost
+
+The package ships a [Laravel Boost](https://github.com/laravel/boost) guideline and an agent skill, `hindsight-php-agent-memory`, so a coding agent in your project knows how to add memory to an agent, queue retains and test with `Hindsight::fake()`. Run `php artisan boost:install` and pick `fedoseev/hindsight-php` from the third-party list, or add it to `packages` in `boost.json`. Boost then adds the guideline to your agent's guideline file (for example `CLAUDE.md`) and copies the skill into the agent's skills directory.
 
 ## Memory for Laravel AI SDK agents
 
@@ -481,6 +485,7 @@ Without an LLM the server cannot run reflect or mental models, so those are cove
 | Laravel | 12, 13 | 12, 13 |
 | Laravel AI SDK | 1.x | latest and lowest allowed |
 | Hindsight API | 1.1, 1.2 | 1.1.0, 1.2.0 |
+| Guzzle | 7.15+, 8 | 7 and 8 |
 
 ## Contributing
 

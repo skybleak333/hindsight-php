@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   tests:
-    name: PHP ${{ matrix.php }}, Laravel ${{ matrix.laravel }}${{ matrix.stability == 'prefer-lowest' && ', lowest deps' || '' }}
+    name: PHP ${{ matrix.php }}, Laravel ${{ matrix.laravel }}${{ matrix.stability == 'prefer-lowest' && ', lowest deps' || '' }}${{ matrix.guzzle != 'default' && format(', Guzzle {0}', matrix.guzzle) || '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -23,6 +23,7 @@ jobs:
         php: ['8.3', '8.4', '8.5']
         laravel: ['12', '13']
         stability: ['prefer-stable']
+        guzzle: ['default']
         include:
           - laravel: '12'
             testbench: '^10.0'
@@ -32,6 +33,12 @@ jobs:
             laravel: '12'
             testbench: '^10.0'
             stability: 'prefer-lowest'
+          # New Laravel 13 apps install Guzzle 8; keep Guzzle 7 apps covered too.
+          - php: '8.4'
+            laravel: '13'
+            testbench: '^11.0'
+            stability: 'prefer-stable'
+            guzzle: '^7.15'
 
     steps:
       - uses: actions/checkout@v5
@@ -44,10 +51,11 @@ jobs:
       - name: Install dependencies
         run: |
           composer require --dev "orchestra/testbench:${{ matrix.testbench }}" --no-update --no-interaction
+          if [ "${{ matrix.guzzle }}" != "default" ]; then composer require "guzzlehttp/guzzle:${{ matrix.guzzle }}" --no-update --no-interaction; fi
           composer update --${{ matrix.stability }} --prefer-dist --no-interaction --no-progress
 
       - name: Show versions
-        run: composer show | grep -E '^(guzzlehttp/guzzle|laravel/ai|laravel/framework|orchestra/testbench|phpunit/phpunit) '
+        run: composer show | grep -E '^(guzzlehttp/guzzle|guzzlehttp/psr7|laravel/ai|laravel/framework|orchestra/testbench|phpunit/phpunit) '
 
       - name: Run tests
         run: vendor/bin/phpunit --testsuite unit,laravel
