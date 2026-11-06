@@ -31,8 +31,15 @@ class SupportAgent implements Agent, HasMiddleware
 
 Monday: *"I'm on the Pro plan and I prefer short answers."* Friday, in a new conversation: *"When does my plan renew?"* The agent already knows the plan and answers briefly.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/how-it-works-dark.svg">
+  <img alt="The Memory middleware recalls relevant memories from a Hindsight bank before the model answers, adds them to the agent's instructions, and retains the exchange afterwards, directly or from a queued job." src="docs/how-it-works-light.svg">
+</picture>
+
 - **Memory that waits out an outage.** With `->queue()`, each exchange is stored by a queued job that retries while the Hindsight API is unavailable. Every attempt sends the same operation ID, so a retry never stores a memory twice.
 - **Tests without a server.** `Hindsight::fake()` replaces the client with an in-memory server and gives you `assertRetained()` and `assertRecalled()`. CI compares its tag filters, document handling and rejected requests with real Hindsight servers.
+
+**Why not `RemembersConversations`?** The Laravel AI SDK's own conversation memory replays the latest messages of one conversation, up to 100 by default (`maxConversationMessages()` in laravel/ai 1.3). A new conversation starts empty, and a long one loses its beginning. Hindsight keeps facts across conversations and recalls only the ones relevant to the current message. The two work together: `RemembersConversations` for the thread, `Memory` for what the agent should know about the user.
 
 This is a community package. It is not affiliated with Vectorize, the company behind Hindsight.
 
