@@ -40,4 +40,23 @@ return [
 
     'headers' => [],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Queued retains
+    |--------------------------------------------------------------------------
+    |
+    | Used by the RetainMemory job and by Memory::bank(...)->queue(). A failed
+    | attempt (connection error, timeout, 429 or 5xx) is retried after the
+    | backoff, in seconds. Leave the connection and queue empty to use your
+    | application's defaults.
+    |
+    */
+
+    'queue' => [
+        'connection' => env('HINDSIGHT_QUEUE_CONNECTION'),
+        'queue' => env('HINDSIGHT_QUEUE'),
+        'tries' => (int) env('HINDSIGHT_QUEUE_TRIES', 5),
+        'backoff' => [10, 30, 60, 120],
+    ],
+
 ];

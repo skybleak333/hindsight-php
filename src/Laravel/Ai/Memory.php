@@ -9,12 +9,16 @@ use Fedoseev\Hindsight\Budget;
 use Fedoseev\Hindsight\Exceptions\HindsightException;
 use Fedoseev\Hindsight\Exceptions\NotFoundException;
 use Fedoseev\Hindsight\Hindsight;
+use Fedoseev\Hindsight\Laravel\Jobs\RetainMemory;
 use Fedoseev\Hindsight\TagsMatch;
+use Illuminate\Contracts\Bus\Dispatcher;
 use Laravel\Ai\Gateway\StepResponse;
 use Laravel\Ai\Gateway\StepResult;
 use Laravel\Ai\Messages\UserMessage;
 use Laravel\Ai\PendingStep;
 use Laravel\Ai\Responses\Data\FinishReason;
+use LogicException;
+use Throwable;
 
 /**
  * Long-term memory for a Laravel AI SDK agent.
@@ -67,6 +71,12 @@ final class Memory
     private ?string $documentId = null;
 
     private bool $throw = false;
+
+    private bool $queued = false;
+
+    private ?string $queueConnection = null;
+
+    private ?string $queueName = null;
 
     private ?Hindsight $client = null;
 
@@ -154,7 +164,31 @@ final class Memory
      */
     public function retainSynchronously(): self
     {
+        if ($this->queued) {
+            throw new LogicException('A queued retain is always async: call either queue() or retainSynchronously().');
+        }
+
         $this->async = false;
+
+        return $this;
+    }
+
+    /**
+     * Retain each exchange from a queue worker with the RetainMemory job, instead of calling Hindsight during
+     * the run. When Hindsight is down, the job retries with backoff, so the memory arrives later instead of
+     * being lost. Retries cannot store an exchange twice: every attempt sends the same operation ID.
+     *
+     * Leave the connection and queue null to use the ones in config/hindsight.php, or the application's defaults.
+     */
+    public function queue(?string $connection = null, ?string $queue = null): self
+    {
+        if (! $this->async) {
+            throw new LogicException('A queued retain is always async: call either queue() or retainSynchronously().');
+        }
+
+        $this->queued = true;
+        $this->queueConnection = $connection;
+        $this->queueName = $queue;
 
         return $this;
     }
@@ -255,6 +289,12 @@ final class Memory
 
     private function retainExchange(string $message, string $answer): void
     {
+        if ($this->queued) {
+            $this->queueExchange($message, $answer);
+
+            return;
+        }
+
         try {
             $this->client($this->timeout ?? ($this->async ? self::DEFAULT_TIMEOUT : null))->retain(
                 $this->bankId,
@@ -267,6 +307,39 @@ final class Memory
             );
         } catch (HindsightException $exception) {
             $this->handleError($exception);
+        }
+    }
+
+    private function queueExchange(string $message, string $answer): void
+    {
+        $job = new RetainMemory(
+            $this->bankId,
+            "USER: {$message}\nASSISTANT: {$answer}",
+            context: $this->context,
+            documentId: $this->documentId,
+            tags: $this->tags,
+            updateMode: $this->documentId === null ? null : 'append',
+            timeout: $this->timeout ?? self::DEFAULT_TIMEOUT,
+        );
+
+        if ($this->queueConnection !== null) {
+            $job->onConnection($this->queueConnection);
+        }
+
+        if ($this->queueName !== null) {
+            $job->onQueue($this->queueName);
+        }
+
+        try {
+            // Through the bus directly, so the push happens on this line and a broken queue connection is caught below.
+            app(Dispatcher::class)->dispatch($job);
+        } catch (Throwable $exception) {
+            // On the sync driver the job runs right here, so its own Hindsight errors land here too.
+            if ($this->throw) {
+                throw $exception;
+            }
+
+            report($exception);
         }
     }
 

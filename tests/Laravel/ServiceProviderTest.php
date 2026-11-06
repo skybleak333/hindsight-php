@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Fedoseev\Hindsight\Tests\Laravel;
 
 use Fedoseev\Hindsight\Hindsight;
+use Fedoseev\Hindsight\Testing\HindsightFake;
 use Fedoseev\Hindsight\Laravel\Facades\Hindsight as HindsightFacade;
 use Fedoseev\Hindsight\Laravel\HindsightServiceProvider;
 use Fedoseev\Hindsight\Tests\Support\FakeHttpClient;
@@ -71,9 +72,12 @@ final class ServiceProviderTest extends TestCase
         $documented = [];
         preg_match_all('/@method static .+? (\w+)\(/', (string) (new ReflectionClass(HindsightFacade::class))->getDocComment(), $matches);
 
-        foreach ((new ReflectionClass(Hindsight::class))->getMethods(ReflectionMethod::IS_PUBLIC) as $method) {
-            if (! $method->isConstructor() && ! $method->isStatic()) {
-                $documented[] = $method->getName();
+        // The client's methods, then the ones HindsightFake adds, which work after Hindsight::fake().
+        foreach ([Hindsight::class, HindsightFake::class] as $class) {
+            foreach ((new ReflectionClass($class))->getMethods(ReflectionMethod::IS_PUBLIC) as $method) {
+                if (! $method->isConstructor() && ! $method->isStatic() && $method->getDeclaringClass()->getName() === $class) {
+                    $documented[] = $method->getName();
+                }
             }
         }
 

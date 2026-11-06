@@ -31,7 +31,7 @@ use stdClass;
  *
  * @see https://hindsight.vectorize.io/api-reference
  */
-final class Hindsight
+class Hindsight
 {
     public const VERSION = '0.1.0';
 

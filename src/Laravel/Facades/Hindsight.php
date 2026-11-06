@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Fedoseev\Hindsight\Laravel\Facades;
 
+use Fedoseev\Hindsight\Testing\HindsightFake;
 use Illuminate\Support\Facades\Facade;
 
 /**
@@ -49,11 +50,45 @@ use Illuminate\Support\Facades\Facade;
  * @method static array<string, mixed> retryOperation(string $bankId, string $operationId)
  * @method static \Fedoseev\Hindsight\Responses\Operation waitForOperation(string $bankId, string $operationId, float $timeout = 60.0, float $interval = 0.5)
  * @method static mixed request(string $method, string $path, array<array-key, mixed>|object|null $body = null, array<string, mixed> $query = [])
+ * @method static \Fedoseev\Hindsight\Testing\HindsightFake remember(string $bankId, string|array<string, mixed> ...$memories)
+ * @method static \Fedoseev\Hindsight\Testing\HindsightFake unavailable(int|null $times = null, int|null $status = null)
+ * @method static \Fedoseev\Hindsight\Testing\HindsightFake available()
+ * @method static \Fedoseev\Hindsight\Testing\HindsightFake reflectUsing(string|\Closure $answer)
+ * @method static \Fedoseev\Hindsight\Testing\HindsightFake respondTo(string $method, string $path, array<array-key, mixed>|\Closure $response, int $status = 200)
+ * @method static void assertRetained(string $bankId, \Closure|int|null $callback = null)
+ * @method static void assertNotRetained(string $bankId, \Closure|null $callback = null)
+ * @method static void assertNothingRetained()
+ * @method static void assertRecalled(string $bankId, \Closure|int|null $callback = null)
+ * @method static void assertNotRecalled(string $bankId, \Closure|null $callback = null)
+ * @method static void assertReflected(string $bankId, \Closure|int|null $callback = null)
+ * @method static list<array<string, mixed>> retained(string $bankId, \Closure|null $callback = null)
+ * @method static list<array<string, mixed>> recalls(string $bankId)
  *
  * @see \Fedoseev\Hindsight\Hindsight
  */
 final class Hindsight extends Facade
 {
+    /**
+     * Replace the client with an in-memory fake for this test, and get it back to seed or inspect it.
+     *
+     *     Hindsight::fake(['user-1' => ['Alice is on the Pro plan']]);
+     *     // ... run the code under test ...
+     *     Hindsight::assertRetained('user-1', fn (string $content) => str_contains($content, 'renew'));
+     *
+     * The agent middleware, the tools and the RetainMemory job all resolve the client from the container, so
+     * they use the fake too.
+     *
+     * @param  array<string, list<string|array<string, mixed>>>  $memories  Memories recall finds, by bank.
+     */
+    public static function fake(array $memories = []): HindsightFake
+    {
+        $fake = new HindsightFake($memories);
+
+        self::swap($fake);
+
+        return $fake;
+    }
+
     protected static function getFacadeAccessor(): string
     {
         return \Fedoseev\Hindsight\Hindsight::class;
