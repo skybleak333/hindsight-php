@@ -2,7 +2,9 @@
 
 All notable changes to this package are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the package uses [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.5.0] - 2026-11-11
+
+Tested against Hindsight 1.1.0, 1.2.0 and 1.2.1.
 
 ### Added
 
@@ -65,6 +67,7 @@ First release. Tested against Hindsight 1.1.0, Laravel 12 and 13, and Laravel AI
 - `withTimeout()` for a copy of the client with a shorter timeout. The middleware and tools use short timeouts by default, so a hung server does not hold up an agent for two minutes.
 - `ConfigurationException` for a malformed URL, thrown when the client is created.
 
+[0.5.0]: https://github.com/skybleak333/hindsight-php/releases/tag/v0.5.0
 [0.4.0]: https://github.com/skybleak333/hindsight-php/releases/tag/v0.4.0
 [0.3.0]: https://github.com/skybleak333/hindsight-php/releases/tag/v0.3.0
 [0.2.0]: https://github.com/skybleak333/hindsight-php/releases/tag/v0.2.0
