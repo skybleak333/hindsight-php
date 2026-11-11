@@ -64,7 +64,7 @@ public function tools(): iterable
 }
 ```
 
-`Reflect` runs the server's LLM; it fails on a Hindsight server started without an LLM provider.
+`Reflect` runs the server's LLM; it fails on a Hindsight server started without an LLM provider. On Hindsight 1.2.1 or later, `SearchPages` and `ReadPage` find and read the bank's pages.
 
 ## Memory tools for an MCP server
 

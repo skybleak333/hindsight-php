@@ -68,6 +68,18 @@ abstract class TestCase extends OrchestraTestCase
     }
 
     /**
+     * Queue an answer for any endpoint, checked against the OpenAPI document that has it.
+     *
+     * @param  array<string, mixed>  $body
+     */
+    protected function queueFor(string $method, string $path, array $body): void
+    {
+        OpenApiContract::for($method, $path)->assertResponse($method, $path, $body);
+
+        $this->http->json($body);
+    }
+
+    /**
      * @return list<string>
      */
     protected function sentPaths(): array

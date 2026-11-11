@@ -363,6 +363,8 @@ public function tools(): iterable
 }
 ```
 
+With Hindsight 1.2.1 or later, `SearchPages` (`search_pages`) and `ReadPage` (`read_page`) let the agent find and read the bank's [pages](#everything-else) too.
+
 Each tool takes `tags()` (strict by default, like the middleware), `timeout()`, `using()` and `named()` (to rename it, for example when an agent has tools for two banks). `Recall` and `Reflect` take `budget()`. The default timeouts are 15 seconds for `Recall` and `Retain` and 60 for `Reflect`, which runs the server's LLM. When Hindsight fails, a tool returns the error to the model instead of ending the run, so the agent can still answer.
 
 The middleware and the tools work together. A common setup is the middleware for automatic memory plus `Retain` for facts the agent should keep on purpose.

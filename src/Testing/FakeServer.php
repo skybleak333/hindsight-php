@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Fedoseev\Hindsight\Testing;
 
 use Closure;
+use Fedoseev\Hindsight\TagsMatch;
 use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Psr7\Response;
 use LogicException;
@@ -397,29 +398,7 @@ final class FakeServer implements ClientInterface
      */
     private static function tagsMatch(array $memoryTags, array $tags, string $match): bool
     {
-        if ($match === 'exact') {
-            // Set equality, as Postgres compares the arrays: order and repeats do not matter.
-            $memoryTags = array_values(array_unique($memoryTags));
-            $tags = array_values(array_unique($tags));
-            sort($memoryTags);
-            sort($tags);
-
-            return $memoryTags === $tags;
-        }
-
-        if ($tags === []) {
-            return true;
-        }
-
-        if ($memoryTags === []) {
-            return in_array($match, ['any', 'all'], true);
-        }
-
-        return match ($match) {
-            'any', 'any_strict' => array_intersect($tags, $memoryTags) !== [],
-            'all', 'all_strict' => array_diff($tags, $memoryTags) === [],
-            default => throw new LogicException("Unknown tags_match '{$match}'."),
-        };
+        return (TagsMatch::tryFrom($match) ?? throw new LogicException("Unknown tags_match '{$match}'."))->matches($tags, $memoryTags);
     }
 
     /**

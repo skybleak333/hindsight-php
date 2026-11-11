@@ -13,7 +13,6 @@ use Fedoseev\Hindsight\Laravel\Mcp\Tools\Recall;
 use Fedoseev\Hindsight\Laravel\Mcp\Tools\Reflect;
 use Fedoseev\Hindsight\Laravel\Mcp\Tools\Retain;
 use Fedoseev\Hindsight\Laravel\Mcp\Tools\SearchPages;
-use Fedoseev\Hindsight\Tests\Support\OpenApiContract;
 use Fedoseev\Hindsight\Tests\Laravel\Fixtures\MemoryServer;
 use Illuminate\Foundation\Auth\User;
 use Illuminate\Support\Facades\Exceptions;
@@ -157,7 +156,7 @@ final class McpToolsTest extends TestCase
 
     public function test_search_pages_lists_pages_to_read(): void
     {
-        $this->queuePages('GET', '/v1/default/banks/b/pages/search', ['results' => [
+        $this->queueFor('GET', '/v1/default/banks/b/pages/search', ['results' => [
             ['id' => 'p1', 'name' => 'Alice', 'snippet' => 'Alice is on the Pro plan.', 'score' => 0.03],
         ], 'total' => 1]);
         $search = $this->serve(SearchPages::bank('b')->tags(['user:42'])->limit(3));
@@ -195,6 +194,7 @@ final class McpToolsTest extends TestCase
      */
     public static function tagRules(): iterable
     {
+        yield 'an empty filter lets every page through' => [[], TagsMatch::AnyStrict, ['b'], true];
         yield 'any allows untagged pages' => [['a'], TagsMatch::Any, [], true];
         yield 'any needs a common tag' => [['a'], TagsMatch::Any, ['b'], false];
         yield 'any_strict leaves untagged pages out' => [['a'], TagsMatch::AnyStrict, [], false];
@@ -263,21 +263,11 @@ final class McpToolsTest extends TestCase
     }
 
     /**
-     * @param  array<string, mixed>  $body
-     */
-    private function queuePages(string $method, string $path, array $body): void
-    {
-        OpenApiContract::for($method, $path)->assertResponse($method, $path, $body);
-
-        $this->http->json($body);
-    }
-
-    /**
      * @param  list<string>  $tags
      */
     private function queuePage(array $tags): void
     {
-        $this->queuePages('GET', '/v1/default/banks/b/pages/p1', [
+        $this->queueFor('GET', '/v1/default/banks/b/pages/p1', [
             'id' => 'p1', 'name' => 'Alice', 'type' => 'page', 'tags' => $tags, 'markdown' => "---\nname: Alice\n---\nAlice is on the Pro plan.",
         ]);
     }

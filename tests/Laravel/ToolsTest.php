@@ -6,9 +6,11 @@ namespace Fedoseev\Hindsight\Tests\Laravel;
 
 use Fedoseev\Hindsight\Budget;
 use Fedoseev\Hindsight\Exceptions\NotFoundException;
+use Fedoseev\Hindsight\Laravel\Ai\Tools\ReadPage;
 use Fedoseev\Hindsight\Laravel\Ai\Tools\Recall;
 use Fedoseev\Hindsight\Laravel\Ai\Tools\Reflect;
 use Fedoseev\Hindsight\Laravel\Ai\Tools\Retain;
+use Fedoseev\Hindsight\Laravel\Ai\Tools\SearchPages;
 use Fedoseev\Hindsight\Tests\Laravel\Fixtures\SupportAgent;
 use Illuminate\JsonSchema\JsonSchemaTypeFactory;
 use Illuminate\Support\Facades\Exceptions;
@@ -90,6 +92,38 @@ final class ToolsTest extends TestCase
         Exceptions::assertNothingReported();
     }
 
+    public function test_search_pages_lists_pages_to_read(): void
+    {
+        $this->queueFor('GET', '/v1/default/banks/b/pages/search', ['results' => [
+            ['id' => 'p1', 'name' => 'Alice', 'snippet' => 'Alice is on the Pro plan.', 'score' => 0.03],
+        ], 'total' => 1]);
+
+        $output = SearchPages::bank('b')->limit(3)->handle(new Request(['query' => 'pro plan']));
+
+        $this->assertSame("Pages, best match first:\n- Alice (id: p1): Alice is on the Pro plan.", $output);
+        $this->assertSame('q=pro%20plan&limit=3', $this->http->requests[0]->getUri()->getQuery());
+    }
+
+    public function test_read_page_returns_the_markdown_within_the_tags_of_the_tool(): void
+    {
+        $page = ['id' => 'p1', 'name' => 'Alice', 'type' => 'page', 'markdown' => 'Alice is on the Pro plan.'];
+        $this->queueFor('GET', '/v1/default/banks/b/pages/p1', [...$page, 'tags' => ['user:42']]);
+        $this->queueFor('GET', '/v1/default/banks/b/pages/p1', [...$page, 'tags' => ['user:7']]);
+        $read = ReadPage::bank('b')->tags(['user:42']);
+
+        $this->assertSame('Alice is on the Pro plan.', $read->handle(new Request(['page_id' => 'p1'])));
+        $this->assertSame('There is no such page.', $read->handle(new Request(['page_id' => 'p1'])));
+    }
+
+    public function test_read_page_says_so_when_there_is_no_such_page(): void
+    {
+        Exceptions::fake();
+        $this->http->json(['detail' => "Page 'nope' not found"], 404);
+
+        $this->assertSame('There is no such page.', ReadPage::bank('b')->handle(new Request(['page_id' => 'nope'])));
+        Exceptions::assertNothingReported();
+    }
+
     public function test_tools_describe_themselves(): void
     {
         $schema = new JsonSchemaTypeFactory;
@@ -107,6 +141,8 @@ final class ToolsTest extends TestCase
         $this->assertSame('reflect_memory', (new Reflect('b'))->name());
 
         $this->assertSame('customer_memory', Recall::bank('b')->named('customer_memory')->name());
+        $this->assertSame('search_pages', SearchPages::bank('b')->name());
+        $this->assertSame(['page_id'], (new ObjectSchema(ReadPage::bank('b')->schema($schema)))->toSchema()['required']);
     }
 
     public function test_an_agent_can_call_the_tools(): void

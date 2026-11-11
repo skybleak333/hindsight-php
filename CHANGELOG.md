@@ -2,6 +2,17 @@
 
 All notable changes to this package are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the package uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- `SearchPages` and `ReadPage` for Laravel AI SDK agents too, in `Fedoseev\Hindsight\Laravel\Ai\Tools`, with the same tag check as the MCP tools.
+- `TagsMatch::matches()`: whether tags pass a filter by the server's rules. The fake and both `ReadPage` tools use it.
+
+### Fixed
+
+- The MCP `ReadPage` refused every page when it was given `tags([])`. An empty filter lets everything through, as on the server.
+
 ## [0.6.0] - 2026-11-11
 
 ### Added

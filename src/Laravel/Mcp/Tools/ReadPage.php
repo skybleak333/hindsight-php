@@ -70,32 +70,13 @@ final class ReadPage extends MemoryTool
     }
 
     /**
-     * The rules of Hindsight's tag filters: "any" and "all" also allow untagged pages, the strict modes and "exact" do not.
-     *
      * @param  array<mixed>  $pageTags
      */
     private function visible(array $pageTags): bool
     {
         $match = $this->tagsMatch instanceof TagsMatch ? $this->tagsMatch : TagsMatch::tryFrom($this->tagsMatch);
 
-        if ($match === null) {
-            return false;
-        }
-
-        $pageTags = array_values(array_unique(array_filter($pageTags, is_string(...))));
-        $tags = array_values(array_unique($this->tags ?? []));
-        $common = array_intersect($tags, $pageTags);
-        $hasAll = count($common) === count($tags);
-
-        sort($pageTags);
-        sort($tags);
-
-        return match ($match) {
-            TagsMatch::Any => $pageTags === [] || $common !== [],
-            TagsMatch::AnyStrict => $common !== [],
-            TagsMatch::All => $pageTags === [] || $hasAll,
-            TagsMatch::AllStrict => $pageTags !== [] && $hasAll,
-            TagsMatch::Exact => $pageTags === $tags,
-        };
+        // An unknown mode would be refused by the server, so nothing is shown.
+        return $match !== null && $match->matches($this->tags ?? [], array_values(array_filter($pageTags, is_string(...))));
     }
 }
