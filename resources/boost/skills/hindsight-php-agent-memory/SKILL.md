@@ -86,6 +86,7 @@ protected function boot(): void
 - Use `Fedoseev\Hindsight\Laravel\Mcp\Tools` in MCP servers and `Fedoseev\Hindsight\Laravel\Ai\Tools` in agents. An agent can run the MCP classes, but then it sees only a generic error when Hindsight fails.
 - A per-user bank needs an authenticated route, for example `Mcp::web(...)->middleware('auth:sanctum')`.
 - When Hindsight fails, the client gets an error result. The message is generic unless `app.debug` is on.
+- On Hindsight 1.2.1 or later, `SearchPages` and `ReadPage` let the client find and read the bank's pages (markdown summaries the server keeps up to date).
 
 ## Test it without a server
 

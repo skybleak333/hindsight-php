@@ -40,7 +40,7 @@ abstract class TestCase extends OrchestraTestCase
     protected function tearDown(): void
     {
         foreach (isset($this->http) ? $this->http->requests : [] as $request) {
-            OpenApiContract::instance()->assertRequest($request);
+            OpenApiContract::for($request->getMethod(), $request->getUri()->getPath())->assertRequest($request);
         }
 
         parent::tearDown();

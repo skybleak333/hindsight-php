@@ -401,6 +401,8 @@ use Laravel\Mcp\Facades\Mcp;
 Mcp::web('/mcp/assistant', AssistantServer::class)->middleware('auth:sanctum');
 ```
 
+With Hindsight 1.2.1 or later, two more tools let the client use the bank's [pages](#everything-else): `SearchPages` (`search_pages`) finds pages by a few words, and `ReadPage` (`read_page`) returns a page as markdown. A `ReadPage` limited with `tags()` does not return pages outside those tags, even when the client asks for one by id.
+
 `bank()` takes a bank ID or a closure that gets the MCP request. Everything else works as with the agent tools: `tags()`, `timeout()`, `using()`, `named()`, and `budget()` on `Recall` and `Reflect`. The tools validate their arguments, and tell the client that `recall_memory` and `reflect_memory` only read and that `retain_memory` is not destructive: it only adds memories.
 
 When Hindsight fails, the tool returns an error result and reports the exception. The client sees `Memory is unavailable right now.` The full message is shown only with `APP_DEBUG=true`, because the answer leaves your app. laravel/mcp does the same for other exceptions thrown by tools.

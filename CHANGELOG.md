@@ -2,6 +2,12 @@
 
 All notable changes to this package are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the package uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- MCP tools for pages: `SearchPages` (`search_pages`) and `ReadPage` (`read_page`) in `Fedoseev\Hindsight\Laravel\Mcp\Tools`, for Hindsight 1.2.1 and later. A `ReadPage` limited with `tags()` follows Hindsight's tag rules, so a client cannot read a page outside those tags by asking for its id.
+
 ## [0.5.0] - 2026-11-11
 
 Tested against Hindsight 1.1.0, 1.2.0 and 1.2.1.
