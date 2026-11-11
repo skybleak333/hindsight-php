@@ -405,6 +405,22 @@ With Hindsight 1.2.1 or later, two more tools let the client use the bank's [pag
 
 `bank()` takes a bank ID or a closure that gets the MCP request. Everything else works as with the agent tools: `tags()`, `timeout()`, `using()`, `named()`, and `budget()` on `Recall` and `Reflect`. The tools validate their arguments, and tell the client that `recall_memory` and `reflect_memory` only read and that `retain_memory` is not destructive: it only adds memories.
 
+The same tool objects work in [Prism](https://github.com/prism-php/prism), which accepts Laravel MCP tools (checked with Prism 0.103). The model then gets the same tools as an MCP client:
+
+```php
+use Prism\Prism\Facades\Prism;
+use Prism\Prism\Facades\Tool;
+
+$bank = 'user-'.auth()->id();
+
+$response = Prism::text()
+    ->using($provider, $model)
+    ->withTools([Tool::make(Recall::bank($bank)), Tool::make(Retain::bank($bank))])
+    ->withMaxSteps(3)
+    ->withPrompt($message)
+    ->asText();
+```
+
 When Hindsight fails, the tool returns an error result and reports the exception. The client sees `Memory is unavailable right now.` The full message is shown only with `APP_DEBUG=true`, because the answer leaves your app. laravel/mcp does the same for other exceptions thrown by tools.
 
 ## Queued retains
