@@ -37,6 +37,7 @@ Monday: *"I'm on the Pro plan and I prefer short answers."* Friday, in a new con
 </picture>
 
 - **Memory that waits out an outage.** With `->queue()`, each exchange is stored by a queued job that retries while the Hindsight API is unavailable. Every attempt sends the same operation ID, so a retry never stores a memory twice.
+- **Memory for MCP clients.** The [tools for Laravel MCP servers](#memory-tools-for-mcp-servers) give Claude Desktop, Cursor and other MCP clients long-term memory, with a bank for each signed-in user.
 - **Tests without a server.** `Hindsight::fake()` replaces the client with an in-memory server and gives you `assertRetained()` and `assertRecalled()`. CI compares its tag filters, document handling and rejected requests with real Hindsight servers.
 
 **Why not `RemembersConversations`?** The Laravel AI SDK's own conversation memory replays the latest messages of one conversation, up to 100 by default (`maxConversationMessages()` in laravel/ai 1.3). A new conversation starts empty, and a long one loses its beginning. Hindsight keeps facts across conversations and recalls only the ones relevant to the current message. The two work together: `RemembersConversations` for the thread, `Memory` for what the agent should know about the user.
