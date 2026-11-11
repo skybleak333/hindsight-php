@@ -26,10 +26,17 @@ final class OpenApiContract
 
     private Validator $validator;
 
+    private Validator $serverValidator;
+
     private function __construct(string $path)
     {
         $json = (string) file_get_contents($path);
         $this->spec = json_decode($json, true, flags: JSON_THROW_ON_ERROR);
+
+        // Servers newer than the document add fields to their answers, and the client ignores the ones it does not know.
+        $this->serverValidator = new Validator;
+        $this->serverValidator->setMaxErrors(5);
+        $this->serverValidator->resolver()?->registerRaw(json_decode($json, flags: JSON_THROW_ON_ERROR), self::SPEC_ID);
 
         // Decoded to objects so that empty JSON objects stay objects when the document is registered.
         $document = json_decode($json, flags: JSON_THROW_ON_ERROR);
@@ -108,6 +115,23 @@ final class OpenApiContract
         $data = is_array($body) ? json_decode(json_encode($body, JSON_THROW_ON_ERROR), flags: JSON_THROW_ON_ERROR) : $body;
 
         $this->assertMatchesSchema("{$method} {$template} response", $data, "{$pointer}/responses/{$status}/content/application~1json/schema");
+    }
+
+    /**
+     * Like assertResponse(), for the answer of a real server, which may have fields the document does not name.
+     */
+    public function assertServerResponse(string $method, string $path, mixed $body, int $status = 200): void
+    {
+        [$template, $operation, $pointer] = $this->operation(strtolower($method), $path);
+
+        Assert::assertTrue(
+            isset($operation['responses'][(string) $status]['content']['application/json']['schema']),
+            "{$method} {$template} documents no JSON body for status {$status}.",
+        );
+
+        $data = is_array($body) ? json_decode(json_encode($body, JSON_THROW_ON_ERROR), flags: JSON_THROW_ON_ERROR) : $body;
+
+        $this->assertMatchesSchema("{$method} {$template} response", $data, "{$pointer}/responses/{$status}/content/application~1json/schema", $this->serverValidator);
     }
 
     /**
@@ -207,9 +231,9 @@ final class OpenApiContract
         };
     }
 
-    private function assertMatchesSchema(string $label, mixed $data, string $pointer): void
+    private function assertMatchesSchema(string $label, mixed $data, string $pointer, ?Validator $validator = null): void
     {
-        $result = $this->validator->validate($data, self::SPEC_ID.$pointer);
+        $result = ($validator ?? $this->validator)->validate($data, self::SPEC_ID.$pointer);
 
         $errors = $result->isValid() ? [] : (new ErrorFormatter)->formatFlat($result->error());
 

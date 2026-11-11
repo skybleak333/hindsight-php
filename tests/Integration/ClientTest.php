@@ -38,7 +38,7 @@ final class ClientTest extends TestCase
     {
         $version = $this->hindsight->version();
 
-        OpenApiContract::instance()->assertResponse('GET', '/version', $this->recorder->lastBody());
+        OpenApiContract::instance()->assertServerResponse('GET', '/version', $this->recorder->lastBody());
         $this->assertMatchesRegularExpression('/^1\.\d+\.\d+/', $version['api_version']);
         $this->assertIsArray($this->hindsight->health());
     }
@@ -69,7 +69,7 @@ final class ClientTest extends TestCase
     public function test_bank_lifecycle(): void
     {
         $profile = $this->hindsight->createBank($this->bank, name: 'PHP client test', reflectMission: 'Remember test facts.');
-        OpenApiContract::instance()->assertResponse('PUT', "/v1/default/banks/{$this->bank}", $this->recorder->lastBody());
+        OpenApiContract::instance()->assertServerResponse('PUT', "/v1/default/banks/{$this->bank}", $this->recorder->lastBody());
         $this->assertSame('PHP client test', $profile['name']);
 
         $this->hindsight->updateBank($this->bank, reflectMission: 'Remember updated test facts.');
@@ -83,7 +83,7 @@ final class ClientTest extends TestCase
         $this->assertArrayNotHasKey('retain_chunk_size', $this->hindsight->resetBankConfig($this->bank)['overrides']);
 
         $this->hindsight->getBankStats($this->bank);
-        OpenApiContract::instance()->assertResponse('GET', "/v1/default/banks/{$this->bank}/stats", $this->recorder->lastBody());
+        OpenApiContract::instance()->assertServerResponse('GET', "/v1/default/banks/{$this->bank}/stats", $this->recorder->lastBody());
 
         $this->assertTrue($this->hindsight->deleteBank($this->bank)['success']);
     }
@@ -92,14 +92,14 @@ final class ClientTest extends TestCase
     {
         $retained = $this->hindsight->retain($this->bank, 'Alice works at Google as a software engineer.', context: 'integration test');
 
-        OpenApiContract::instance()->assertResponse('POST', "/v1/default/banks/{$this->bank}/memories", $this->recorder->lastBody());
+        OpenApiContract::instance()->assertServerResponse('POST', "/v1/default/banks/{$this->bank}/memories", $this->recorder->lastBody());
         $this->assertTrue($retained->success);
         $this->assertSame(1, $retained->itemsCount);
         $this->assertFalse($retained->async);
 
         $recalled = $this->hindsight->recall($this->bank, 'Where does Alice work?');
 
-        OpenApiContract::instance()->assertResponse('POST', "/v1/default/banks/{$this->bank}/memories/recall", $this->recorder->lastBody());
+        OpenApiContract::instance()->assertServerResponse('POST', "/v1/default/banks/{$this->bank}/memories/recall", $this->recorder->lastBody());
         $this->assertNotEmpty($recalled->results);
         $this->assertStringContainsString('Google', implode("\n", $recalled->texts()));
         $this->assertNotSame('', $recalled->results[0]->id);
@@ -112,12 +112,12 @@ final class ClientTest extends TestCase
 
         $aliases = $this->hindsight->addBankAlias($this->bank, $alias);
 
-        OpenApiContract::instance()->assertResponse('POST', "/v1/default/banks/{$this->bank}/aliases", $this->recorder->lastBody(), 201);
+        OpenApiContract::instance()->assertServerResponse('POST', "/v1/default/banks/{$this->bank}/aliases", $this->recorder->lastBody(), 201);
         $this->assertSame([$alias], array_column($aliases['aliases'], 'alias'));
         $this->assertStringContainsString('Google', implode("\n", $this->hindsight->recall($alias, 'Where does Alice work?')->texts()));
 
         $this->assertSame([], $this->hindsight->removeBankAlias($this->bank, $alias)['aliases']);
-        OpenApiContract::instance()->assertResponse('DELETE', "/v1/default/banks/{$this->bank}/aliases/{$alias}", $this->recorder->lastBody());
+        OpenApiContract::instance()->assertServerResponse('DELETE', "/v1/default/banks/{$this->bank}/aliases/{$alias}", $this->recorder->lastBody());
     }
 
     public function test_an_async_retain_can_be_awaited(): void
@@ -129,7 +129,7 @@ final class ClientTest extends TestCase
 
         $operation = $this->hindsight->waitForOperation($this->bank, $retained->operationId, timeout: 60, interval: 0.25);
 
-        OpenApiContract::instance()->assertResponse('GET', "/v1/default/banks/{$this->bank}/operations/{$operation->id}", $this->recorder->lastBody());
+        OpenApiContract::instance()->assertServerResponse('GET', "/v1/default/banks/{$this->bank}/operations/{$operation->id}", $this->recorder->lastBody());
         $this->assertTrue($operation->isCompleted());
         $this->assertStringContainsString('green tea', implode("\n", $this->hindsight->recall($this->bank, 'What does Bob drink?')->texts()));
     }

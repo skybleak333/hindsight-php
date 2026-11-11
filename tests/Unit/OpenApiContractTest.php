@@ -97,6 +97,18 @@ final class OpenApiContractTest extends TestCase
         ]);
     }
 
+    public function test_answers_of_real_servers_may_have_fields_the_document_does_not_name(): void
+    {
+        // Hindsight 1.2.1 added paused_mental_models to the bank stats.
+        $stats = ['bank_id' => 'b1', 'total_nodes' => 0, 'total_links' => 0, 'total_documents' => 0, 'nodes_by_fact_type' => (object) [], 'links_by_link_type' => (object) [], 'links_by_fact_type' => (object) [], 'links_breakdown' => (object) [], 'pending_operations' => 0, 'failed_operations' => 0, 'paused_mental_models' => 0];
+
+        OpenApiContract::instance()->assertServerResponse('GET', '/v1/default/banks/b1/stats', $stats);
+
+        $this->expectException(AssertionFailedError::class);
+
+        OpenApiContract::instance()->assertResponse('GET', '/v1/default/banks/b1/stats', $stats);
+    }
+
     /**
      * @param  array<string, mixed>  $body
      */
