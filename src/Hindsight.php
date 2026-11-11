@@ -592,6 +592,120 @@ class Hindsight
         return $this->transport->json('POST', Transport::path('/v1/default/banks/%s/mental-models/%s/refresh', $bankId, $mentalModelId));
     }
 
+    // Pages (Hindsight 1.2 and later)
+
+    /**
+     * The bank's pages as a tree of folders and pages.
+     *
+     * @param  list<string>|null  $tags  Only pages with these tags, matched as $tagsMatch says.
+     * @return array<string, mixed>  Contains roots, a list of nodes with their children.
+     */
+    public function getPageTree(string $bankId, ?array $tags = null, TagsMatch|string $tagsMatch = TagsMatch::Any): array
+    {
+        return $this->transport->json('GET', Transport::path('/v1/default/banks/%s/pages/tree', $bankId), query: [
+            'tags' => $tags, 'tags_match' => self::tagsMatch($tagsMatch),
+        ]);
+    }
+
+    /**
+     * Create a page: a mental model in the page tree that the server writes in the background.
+     *
+     * @param  string|null  $parentId  The folder to put the page in. Null puts it at the root.
+     * @param  list<string>  $tags
+     * @param  array<string, mixed>  $options  Other fields, e.g. ["trigger" => [...]].
+     * @return array<string, mixed>  Contains page_id, mental_model_id and the operation_id of the first build.
+     */
+    public function createPage(
+        string $bankId,
+        string $name,
+        string $sourceQuery,
+        ?string $parentId = null,
+        array $tags = [],
+        ?int $maxTokens = null,
+        array $options = [],
+    ): array {
+        return $this->transport->json('POST', Transport::path('/v1/default/banks/%s/pages', $bankId), [
+            ...self::withoutNulls([
+                'name' => $name,
+                'source_query' => $sourceQuery,
+                'parent_id' => $parentId,
+                'tags' => $tags === [] ? null : $tags,
+                'max_tokens' => $maxTokens,
+            ]),
+            ...$options,
+        ]);
+    }
+
+    /**
+     * @param  string|null  $parentId  The folder to create it in. Null creates it at the root.
+     * @return array<string, mixed>  The new folder node.
+     */
+    public function createPageFolder(string $bankId, string $name, ?string $parentId = null): array
+    {
+        return $this->transport->json('POST', Transport::path('/v1/default/banks/%s/pages/folders', $bankId), self::withoutNulls([
+            'name' => $name,
+            'parent_id' => $parentId,
+        ]));
+    }
+
+    /**
+     * A page as a markdown document with frontmatter.
+     *
+     * @return array<string, mixed>  Contains markdown, and name, body, tags and timestamp.
+     */
+    public function getPage(string $bankId, string $pageId): array
+    {
+        return $this->transport->json('GET', Transport::path('/v1/default/banks/%s/pages/%s', $bankId, $pageId));
+    }
+
+    /**
+     * Full-text and vector search over the bank's pages.
+     *
+     * @param  int|null  $limit  At most 50. The server returns 10 by default.
+     * @param  list<string>|null  $tags  Only pages with these tags, matched as $tagsMatch says.
+     * @return array<string, mixed>  Contains results, each with id, name and snippet, and total.
+     */
+    public function searchPages(
+        string $bankId,
+        string $query,
+        ?int $limit = null,
+        ?array $tags = null,
+        TagsMatch|string $tagsMatch = TagsMatch::Any,
+    ): array {
+        return $this->transport->json('GET', Transport::path('/v1/default/banks/%s/pages/search', $bankId), query: [
+            'q' => $query, 'limit' => $limit, 'tags' => $tags, 'tags_match' => self::tagsMatch($tagsMatch),
+        ]);
+    }
+
+    /**
+     * All pages as markdown files: an index.md, one file per page and history logs.
+     *
+     * @return array<string, mixed>  Contains files, a list of path and content.
+     */
+    public function exportPages(string $bankId): array
+    {
+        return $this->transport->json('GET', Transport::path('/v1/default/banks/%s/pages/export', $bankId));
+    }
+
+    /**
+     * Rename or move a folder or page, or change a page's options. A new source_query rebuilds the page in the background.
+     *
+     * @param  array<string, mixed>  $changes  Any of name, parent_id (null moves the node to the root), source_query, tags, max_tokens and trigger.
+     * @return array<string, mixed>  The updated node.
+     */
+    public function updatePageNode(string $bankId, string $nodeId, array $changes): array
+    {
+        return $this->transport->json('PATCH', Transport::path('/v1/default/banks/%s/pages/nodes/%s', $bankId, $nodeId), $changes);
+    }
+
+    /**
+     * Delete a folder or page with everything under it, including the mental models of its pages.
+     */
+    public function deletePageNode(string $bankId, string $nodeId): mixed
+    {
+        return $this->transport->send('DELETE', Transport::path('/v1/default/banks/%s/pages/nodes/%s', $bankId, $nodeId));
+    }
+
     // Operations
 
     public function getOperation(string $bankId, string $operationId): Operation

@@ -30,7 +30,7 @@ abstract class ClientTestCase extends TestCase
     {
         if ($this->checkContract) {
             foreach ($this->http->requests as $request) {
-                OpenApiContract::instance()->assertRequest($request);
+                OpenApiContract::for($request->getMethod(), $request->getUri()->getPath())->assertRequest($request);
             }
         }
 
@@ -44,7 +44,7 @@ abstract class ClientTestCase extends TestCase
      */
     protected function respond(string $method, string $path, array $body, int $status = 200): void
     {
-        OpenApiContract::instance()->assertResponse($method, $path, $body, $status);
+        OpenApiContract::for($method, $path)->assertResponse($method, $path, $body, $status);
 
         $this->http->json($body, $status);
     }

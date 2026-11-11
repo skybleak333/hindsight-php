@@ -21,6 +21,8 @@ final class OpenApiContract
 
     private static ?self $instance = null;
 
+    private static ?self $v1_2 = null;
+
     /** @var array<string, mixed> The document as arrays, for finding operations. Schemas are validated from the registered copy. */
     private array $spec;
 
@@ -57,6 +59,23 @@ final class OpenApiContract
     public static function instance(): self
     {
         return self::$instance ??= new self(__DIR__.'/../Fixtures/openapi-1.1.0.json');
+    }
+
+    /**
+     * The 1.2.1 document, for the operations that 1.2 added, such as pages.
+     */
+    public static function v1_2(): self
+    {
+        return self::$v1_2 ??= new self(__DIR__.'/../Fixtures/openapi-1.2.1.json');
+    }
+
+    /**
+     * The oldest document that has the operation: everything 1.1 had is checked against 1.1.0, so the client
+     * does not start sending what only newer servers accept, and what 1.2 added is checked against 1.2.1.
+     */
+    public static function for(string $method, string $path): self
+    {
+        return self::instance()->candidates(strtolower($method), $path) !== [] ? self::instance() : self::v1_2();
     }
 
     public function version(): string
@@ -139,6 +158,22 @@ final class OpenApiContract
      */
     private function operation(string $method, string $path): array
     {
+        $candidates = $this->candidates($method, $path);
+
+        Assert::assertNotEmpty($candidates, strtoupper($method)." {$path} is not an operation in the Hindsight OpenAPI document.");
+
+        // A literal segment such as /memories/list wins over a template such as /memories/{memory_id}.
+        asort($candidates);
+        $template = (string) array_key_first($candidates);
+
+        return [$template, $this->spec['paths'][$template][$method], '#/paths/'.self::escape($template).'/'.$method];
+    }
+
+    /**
+     * @return array<string, int> The path templates that match, with their number of placeholders.
+     */
+    private function candidates(string $method, string $path): array
+    {
         $candidates = [];
 
         foreach ($this->spec['paths'] as $template => $operations) {
@@ -149,13 +184,7 @@ final class OpenApiContract
             }
         }
 
-        Assert::assertNotEmpty($candidates, strtoupper($method)." {$path} is not an operation in the Hindsight OpenAPI document.");
-
-        // A literal segment such as /memories/list wins over a template such as /memories/{memory_id}.
-        asort($candidates);
-        $template = (string) array_key_first($candidates);
-
-        return [$template, $this->spec['paths'][$template][$method], '#/paths/'.self::escape($template).'/'.$method];
+        return $candidates;
     }
 
     /**

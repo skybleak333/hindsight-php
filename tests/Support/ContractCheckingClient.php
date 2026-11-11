@@ -17,7 +17,8 @@ final class ContractCheckingClient implements ClientInterface
 
     public function sendRequest(RequestInterface $request): ResponseInterface
     {
-        OpenApiContract::instance()->assertRequest($request);
+        $contract = OpenApiContract::for($request->getMethod(), $request->getUri()->getPath());
+        $contract->assertRequest($request);
 
         $response = $this->client->sendRequest($request);
 
@@ -25,7 +26,7 @@ final class ContractCheckingClient implements ClientInterface
             $body = (string) $response->getBody();
             $response->getBody()->rewind();
 
-            OpenApiContract::instance()->assertResponse(
+            $contract->assertResponse(
                 $request->getMethod(),
                 $request->getUri()->getPath(),
                 json_decode($body, flags: JSON_THROW_ON_ERROR),
