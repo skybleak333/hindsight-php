@@ -67,7 +67,7 @@ Until the package is listed on Packagist, tell Composer where to find it first:
 
 ```bash
 composer config repositories.hindsight-php vcs https://github.com/skybleak333/hindsight-php
-composer require fedoseev/hindsight-php:^0.3
+composer require fedoseev/hindsight-php:^0.4
 ```
 
 The client needs PHP 8.2+ and works in any PHP project. The Laravel integration is discovered automatically. The agent memory needs [`laravel/ai`](https://github.com/laravel/ai) 1.x and PHP 8.3+. The MCP tools need [`laravel/mcp`](https://github.com/laravel/mcp) 1.x.
