@@ -6,7 +6,6 @@ namespace Fedoseev\Hindsight\Laravel\Ai\Tools;
 
 use Fedoseev\Hindsight\Exceptions\HindsightException;
 use Fedoseev\Hindsight\Exceptions\NotFoundException;
-use Fedoseev\Hindsight\Laravel\Ai\Memory;
 use Fedoseev\Hindsight\Laravel\Concerns\ConfiguresMemoryTool;
 use Laravel\Ai\Contracts\Tool;
 use Laravel\Ai\Tools\Request;
@@ -37,7 +36,7 @@ abstract class MemoryTool implements Tool
         try {
             return $this->run($request);
         } catch (NotFoundException $exception) {
-            if (Memory::isMissingBank($exception, $this->bankId)) {
+            if ($exception->isMissingBank($this->bankId)) {
                 return $this->nothingStored();
             }
 

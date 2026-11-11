@@ -363,10 +363,7 @@ final class Memory
      */
     public static function isMissingBank(NotFoundException $exception, string $bankId): bool
     {
-        $detail = is_array($exception->body) ? ($exception->body['detail'] ?? null) : null;
-
-        return is_string($detail)
-            && preg_match('/(?<![\w-])'.preg_quote($bankId, '/').'(?![\w-])/', $detail) === 1;
+        return $exception->isMissingBank($bankId);
     }
 
     private function handleError(HindsightException $exception): void

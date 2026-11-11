@@ -2,6 +2,12 @@
 
 All notable changes to this package are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the package uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- `NotFoundException::isMissingBank()`: whether a 404 says that the bank does not exist. `Memory::isMissingBank()` now calls it, and the MCP tools no longer use a class from the Laravel AI SDK integration.
+
 ## [0.4.0] - 2026-11-11
 
 Tested against Hindsight 1.1.0, 1.2.0 and 1.2.1, and Laravel MCP 1.0 to 1.2.
