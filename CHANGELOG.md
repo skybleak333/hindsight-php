@@ -6,6 +6,7 @@ All notable changes to this package are documented here. The format follows [Kee
 
 ### Added
 
+- The pages API of Hindsight 1.2.1: `getPageTree()`, `createPage()`, `createPageFolder()`, `getPage()`, `searchPages()`, `exportPages()`, `updatePageNode()` and `deletePageNode()`, also on the facade. Requests to these endpoints are checked against the 1.2.1 OpenAPI document, and CI runs the page tree against a real 1.2.1 server (creating a page needs the server's LLM, so pages are covered by the unit tests). `Hindsight::fake()` does not simulate pages; stub them with `respondTo()`.
 - `NotFoundException::isMissingBank()`: whether a 404 says that the bank does not exist. `Memory::isMissingBank()` now calls it, and the MCP tools no longer use a class from the Laravel AI SDK integration.
 
 ## [0.4.0] - 2026-11-11

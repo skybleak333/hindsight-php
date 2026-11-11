@@ -592,7 +592,7 @@ class Hindsight
         return $this->transport->json('POST', Transport::path('/v1/default/banks/%s/mental-models/%s/refresh', $bankId, $mentalModelId));
     }
 
-    // Pages (Hindsight 1.2 and later)
+    // Pages (Hindsight 1.2.1 and later)
 
     /**
      * The bank's pages as a tree of folders and pages.
