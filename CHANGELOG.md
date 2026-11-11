@@ -2,6 +2,16 @@
 
 All notable changes to this package are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the package uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- Memory tools for [Laravel MCP](https://github.com/laravel/mcp) servers: `Recall`, `Retain` and `Reflect` in `Fedoseev\Hindsight\Laravel\Mcp\Tools`. They take the same options as the Laravel AI SDK tools, and `bank()` also takes a closure that picks the bank from the MCP request, for example by user. Arguments are validated, and the tools describe themselves to the client with read-only and non-destructive hints. When Hindsight fails, the client gets an error result; the exception message is shown only in debug mode.
+
+### Changed
+
+- CI also runs the integration suite against Hindsight 1.2.1. Real servers may answer fields the OpenAPI document does not name; the fake still may not.
+
 ## [0.3.0] - 2026-11-06
 
 ### Added

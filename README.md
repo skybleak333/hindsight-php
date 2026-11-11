@@ -4,7 +4,7 @@
 [![PHP](https://img.shields.io/badge/php-8.2%2B-777bb4)](composer.json)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-A PHP client for [Hindsight](https://github.com/vectorize-io/hindsight), the open-source memory server for AI agents, and long-term memory for [Laravel AI SDK](https://github.com/laravel/ai) agents.
+A PHP client for [Hindsight](https://github.com/vectorize-io/hindsight), the open-source memory server for AI agents, and long-term memory for [Laravel AI SDK](https://github.com/laravel/ai) agents and [Laravel MCP](https://github.com/laravel/mcp) servers.
 
 A Laravel AI agent forgets everything when the conversation ends. With one middleware it remembers: before it answers, it recalls what it knows about the user; after it answers, it stores the exchange.
 
@@ -50,6 +50,7 @@ This is a community package. It is not affiliated with Vectorize, the company be
 - [The client](#the-client)
 - [Laravel](#laravel)
 - [Memory for Laravel AI SDK agents](#memory-for-laravel-ai-sdk-agents)
+- [Memory tools for MCP servers](#memory-tools-for-mcp-servers)
 - [Queued retains](#queued-retains)
 - [Errors](#errors)
 - [Testing your application](#testing-your-application)
@@ -69,7 +70,7 @@ composer config repositories.hindsight-php vcs https://github.com/skybleak333/hi
 composer require fedoseev/hindsight-php:^0.3
 ```
 
-The client needs PHP 8.2+ and works in any PHP project. The Laravel integration is discovered automatically. The agent memory needs [`laravel/ai`](https://github.com/laravel/ai) 1.x and PHP 8.3+.
+The client needs PHP 8.2+ and works in any PHP project. The Laravel integration is discovered automatically. The agent memory needs [`laravel/ai`](https://github.com/laravel/ai) 1.x and PHP 8.3+. The MCP tools need [`laravel/mcp`](https://github.com/laravel/mcp) 1.x.
 
 ## Run a Hindsight server
 
@@ -351,6 +352,44 @@ Each tool takes `tags()` (strict by default, like the middleware), `timeout()`, 
 
 The middleware and the tools work together. A common setup is the middleware for automatic memory plus `Retain` for facts the agent should keep on purpose.
 
+## Memory tools for MCP servers
+
+With [Laravel MCP](https://github.com/laravel/mcp), your app can be an MCP server for clients like Claude Desktop or Cursor. The same three tools exist for it, so the client gets long-term memory stored in your Hindsight:
+
+```php
+use Fedoseev\Hindsight\Laravel\Mcp\Tools\Recall;
+use Fedoseev\Hindsight\Laravel\Mcp\Tools\Reflect;
+use Fedoseev\Hindsight\Laravel\Mcp\Tools\Retain;
+use Laravel\Mcp\Request;
+use Laravel\Mcp\Server;
+
+class AssistantServer extends Server
+{
+    protected function boot(): void
+    {
+        // A bank for each user, picked on every call.
+        $bank = fn (Request $request): string => 'user-'.$request->user()->getAuthIdentifier();
+
+        $this->tools = [
+            Recall::bank($bank),
+            Retain::bank($bank),
+            Reflect::bank($bank),
+        ];
+    }
+}
+```
+
+```php
+// routes/ai.php
+use Laravel\Mcp\Facades\Mcp;
+
+Mcp::web('/mcp/assistant', AssistantServer::class)->middleware('auth:sanctum');
+```
+
+`bank()` takes a bank ID or a closure that gets the MCP request. Everything else works as with the agent tools: `tags()`, `timeout()`, `using()`, `named()`, and `budget()` on `Recall` and `Reflect`. The tools validate their arguments, and tell the client that `recall_memory` and `reflect_memory` only read and that `retain_memory` is not destructive: it only adds memories.
+
+When Hindsight fails, the tool returns an error result and reports the exception. The client sees `Memory is unavailable right now.` The full message is shown only with `APP_DEBUG=true`, because the answer leaves your app. laravel/mcp does the same for other exceptions thrown by tools.
+
 ## Queued retains
 
 By default the middleware stores each exchange during the run, and when the Hindsight API is unavailable that exchange is lost: the error is reported and the agent goes on. Add `queue()` and the exchange is stored by a queued job instead:
@@ -484,6 +523,7 @@ Without an LLM the server cannot run reflect or mental models, so those are cove
 | PHP | 8.2+ (client), 8.3+ (Laravel AI) | 8.2, 8.3, 8.4, 8.5 |
 | Laravel | 12, 13 | 12, 13 |
 | Laravel AI SDK | 1.x | latest and lowest allowed |
+| Laravel MCP | 1.x | latest and lowest allowed |
 | Hindsight API | 1.1, 1.2 | 1.1.0, 1.2.0, 1.2.1 |
 | Guzzle | 7.15+, 8 | 7 and 8 |
 

@@ -56,7 +56,7 @@ jobs:
           composer update --${{ matrix.stability }} --prefer-dist --no-interaction --no-progress
 
       - name: Show versions
-        run: composer show | grep -E '^(guzzlehttp/guzzle|guzzlehttp/psr7|laravel/ai|laravel/framework|orchestra/testbench|phpunit/phpunit) '
+        run: composer show | grep -E '^(guzzlehttp/guzzle|guzzlehttp/psr7|laravel/ai|laravel/framework|laravel/mcp|orchestra/testbench|phpunit/phpunit) '
 
       - name: Run tests
         run: vendor/bin/phpunit --testsuite unit,laravel
@@ -82,7 +82,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          composer remove --dev laravel/ai orchestra/testbench --no-update --no-interaction
+          composer remove --dev laravel/ai laravel/mcp orchestra/testbench --no-update --no-interaction
           composer update --${{ matrix.stability }} --prefer-dist --no-interaction --no-progress
 
       - name: Show versions

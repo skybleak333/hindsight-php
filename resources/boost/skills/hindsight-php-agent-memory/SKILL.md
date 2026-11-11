@@ -1,6 +1,6 @@
 ---
 name: hindsight-php-agent-memory
-description: Add long-term memory to Laravel AI SDK agents with fedoseev/hindsight-php, store and recall memories through the Hindsight client, and test that code with Hindsight::fake(). Use when an agent should remember users across conversations, when code calls retain, recall or reflect, or when writing tests for such code.
+description: Add long-term memory to Laravel AI SDK agents and Laravel MCP servers with fedoseev/hindsight-php, store and recall memories through the Hindsight client, and test that code with Hindsight::fake(). Use when an agent or MCP client should remember users across conversations, when code calls retain, recall or reflect, or when writing tests for such code.
 license: MIT
 metadata:
   author: Andrei Fedoseev
@@ -11,6 +11,7 @@ metadata:
 ## When to activate
 
 - Adding memory to a class that implements `Laravel\Ai\Contracts\Agent`.
+- Giving the clients of a `Laravel\Mcp\Server` memory tools.
 - Code that uses `Fedoseev\Hindsight\Hindsight`, the `Hindsight` facade, `Memory`, the `Recall`/`Retain`/`Reflect` tools or the `RetainMemory` job.
 - Tests for any of the above.
 
@@ -64,6 +65,27 @@ public function tools(): iterable
 ```
 
 `Reflect` runs the server's LLM; it fails on a Hindsight server started without an LLM provider.
+
+## Memory tools for an MCP server
+
+The same tools exist for `laravel/mcp` in `Fedoseev\Hindsight\Laravel\Mcp\Tools`. Register instances in the server's `boot()`; `bank()` also takes a closure that gets the MCP request:
+
+```php
+use Fedoseev\Hindsight\Laravel\Mcp\Tools\Recall;
+use Fedoseev\Hindsight\Laravel\Mcp\Tools\Retain;
+use Laravel\Mcp\Request;
+
+protected function boot(): void
+{
+    $bank = fn (Request $request): string => 'user-'.$request->user()->getAuthIdentifier();
+
+    $this->tools = [...$this->tools, Recall::bank($bank), Retain::bank($bank)];
+}
+```
+
+- Use `Fedoseev\Hindsight\Laravel\Mcp\Tools` in MCP servers and `Fedoseev\Hindsight\Laravel\Ai\Tools` in agents. An agent can run the MCP classes, but then it sees only a generic error when Hindsight fails.
+- A per-user bank needs an authenticated route, for example `Mcp::web(...)->middleware('auth:sanctum')`.
+- When Hindsight fails, the client gets an error result. The message is generic unless `app.debug` is on.
 
 ## Test it without a server
 
