@@ -2,6 +2,12 @@
 
 All notable changes to this package are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the package uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- `Fedoseev\Hindsight\Symfony\HindsightBundle`: registers the client as an autowirable service, configured under `hindsight` (`url`, `api_key`, `timeout`, `headers`, and `http_client` for a PSR-18 client service), with the app's logger.
+
 ## [0.10.0] - 2026-11-12
 
 ### Added

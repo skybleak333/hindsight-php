@@ -429,6 +429,28 @@ When Hindsight fails, the tool returns an error result and reports the exception
 
 ## Memory for Symfony AI agents
 
+In a Symfony app, register the bundle to get the client as a service, configured like the Laravel config file:
+
+```php
+// config/bundles.php
+return [
+    // ...
+    Fedoseev\Hindsight\Symfony\HindsightBundle::class => ['all' => true],
+];
+```
+
+```yaml
+# config/packages/hindsight.yaml
+hindsight:
+    url: '%env(HINDSIGHT_URL)%'
+    api_key: '%env(default::HINDSIGHT_API_KEY)%'
+    # timeout: 120
+    # headers: { X-Tenant: acme }
+    # http_client: my_psr18_client   # service ID; Guzzle is used without one
+```
+
+`Fedoseev\Hindsight\Hindsight` is then autowired wherever a service asks for it, and the app's logger gets the client's warnings.
+
 [Symfony AI](https://github.com/symfony/ai) agents get the same memory from `HindsightMemory` (needs `symfony/ai-agent` 0.15 or 1.0). One object does both halves: as a memory provider it recalls what the bank knows about the user's latest message before the model answers, and as an output processor it retains the exchange after:
 
 ```php
