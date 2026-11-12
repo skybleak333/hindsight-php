@@ -2,6 +2,12 @@
 
 All notable changes to this package are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the package uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- Long-term memory for [Symfony AI](https://github.com/symfony/ai) agents: `Fedoseev\Hindsight\Symfony\Ai\HindsightMemory` is a memory provider that recalls for the user's latest message and an output processor that retains the exchange, including streamed answers, answers after tool calls and answers with reasoning. It takes the bank as a string or a closure, and most options of the Laravel middleware as named arguments (no `document()` or `queue()`). Hindsight errors go to the PSR-3 logger you pass unless `throw` is set. Unit tests run with `symfony/ai-agent` 0.15 and 1.0.0-BETA1, and the integration tests with 0.15 against real Hindsight servers.
+
 ## [0.7.0] - 2026-11-11
 
 ### Added

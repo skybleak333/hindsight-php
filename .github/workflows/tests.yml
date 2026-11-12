@@ -82,7 +82,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          composer remove --dev laravel/ai laravel/mcp orchestra/testbench --no-update --no-interaction
+          composer remove --dev laravel/ai laravel/mcp orchestra/testbench symfony/ai-agent --no-update --no-interaction
           composer update --${{ matrix.stability }} --prefer-dist --no-interaction --no-progress
 
       - name: Show versions
@@ -90,6 +90,36 @@ jobs:
 
       - name: Run tests
         run: vendor/bin/phpunit --testsuite unit
+
+  symfony-ai:
+    name: PHP 8.4, Symfony AI ${{ matrix.agent }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    strategy:
+      fail-fast: false
+      matrix:
+        agent: ['0.15', '1.0 beta']
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+
+      - name: Install dependencies
+        run: |
+          composer remove --dev laravel/ai laravel/mcp orchestra/testbench --no-update --no-interaction
+          if [ "${{ matrix.agent }}" = "1.0 beta" ]; then composer require --dev "symfony/ai-agent:^1.0@beta" "symfony/ai-platform:^1.0@beta" --no-update --no-interaction; fi
+          composer update --prefer-dist --no-interaction --no-progress
+
+      - name: Show versions
+        run: composer show | grep -E '^(symfony/ai-agent|symfony/ai-platform|guzzlehttp/guzzle|phpunit/phpunit) '
+
+      - name: Run tests
+        run: vendor/bin/phpunit --testsuite symfony
 
   static-analysis:
     name: PHPStan

@@ -4,7 +4,7 @@
 [![PHP](https://img.shields.io/badge/php-8.2%2B-777bb4)](composer.json)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-A PHP client for [Hindsight](https://github.com/vectorize-io/hindsight), the open-source memory server for AI agents, and long-term memory for [Laravel AI SDK](https://github.com/laravel/ai) agents and [Laravel MCP](https://github.com/laravel/mcp) servers.
+A PHP client for [Hindsight](https://github.com/vectorize-io/hindsight), the open-source memory server for AI agents, and long-term memory for [Laravel AI SDK](https://github.com/laravel/ai) agents, [Laravel MCP](https://github.com/laravel/mcp) servers and [Symfony AI](https://github.com/symfony/ai) agents.
 
 A Laravel AI agent forgets everything when the conversation ends. With one middleware it remembers: before it answers, it recalls what it knows about the user; after it answers, it stores the exchange.
 
@@ -52,6 +52,7 @@ This is a community package. It is not affiliated with Vectorize, the company be
 - [Laravel](#laravel)
 - [Memory for Laravel AI SDK agents](#memory-for-laravel-ai-sdk-agents)
 - [Memory tools for MCP servers](#memory-tools-for-mcp-servers)
+- [Memory for Symfony AI agents](#memory-for-symfony-ai-agents)
 - [Queued retains](#queued-retains)
 - [Errors](#errors)
 - [Testing your application](#testing-your-application)
@@ -425,6 +426,42 @@ $response = Prism::text()
 
 When Hindsight fails, the tool returns an error result and reports the exception. The client sees `Memory is unavailable right now.` The full message is shown only with `APP_DEBUG=true`, because the answer leaves your app. laravel/mcp does the same for other exceptions thrown by tools.
 
+## Memory for Symfony AI agents
+
+[Symfony AI](https://github.com/symfony/ai) agents get the same memory from `HindsightMemory` (needs `symfony/ai-agent` 0.15 or 1.0). One object does both halves: as a memory provider it recalls what the bank knows about the user's latest message before the model answers, and as an output processor it retains the exchange after:
+
+```php
+use Fedoseev\Hindsight\Hindsight;
+use Fedoseev\Hindsight\Symfony\Ai\HindsightMemory;
+use Symfony\AI\Agent\Agent;
+use Symfony\AI\Agent\Memory\MemoryInputProcessor;
+
+$hindsight = new Hindsight('http://localhost:8888');
+$memory = new HindsightMemory($hindsight, 'user-42');
+
+$agent = new Agent($platform, 'gpt-5-mini', [new MemoryInputProcessor([$memory])], [$memory]);
+```
+
+The memories go into the system prompt under the agent's "Conversation Memory" section. `['use_memory' => false]` in the call options skips the recall, as for any memory provider; the exchange is still retained unless you pass `retain: false`.
+
+In a Symfony app the agent is a shared service, so give the bank as a closure, called on every recall and retain. For an agent that also answers anonymous visitors, return a bank for them too: an error thrown by the closure stops the agent's call.
+
+```php
+$memory = new HindsightMemory(
+    $hindsight,
+    // here the agent answers signed-in users only
+    fn (): string => 'user-'.$security->getUser()->getUserIdentifier(),
+    tags: ['app:support'],
+    logger: $logger,
+);
+```
+
+The other named arguments work like the options of the Laravel middleware: `tags` and `tagsMatch`, `budget`, `maxTokens` and `types` for recall, `context`, `recall: false` or `retain: false`, `async: false` to wait until Hindsight has extracted the facts, `timeout` and `throw`. Recall and an async retain wait 10 seconds by default, a retain with `async: false` the client's own timeout. There is no `document()` or `queue()`.
+
+Without `throw`, a failed recall or retain is logged as a warning to the `logger` you pass (nothing is logged without one), and the agent answers without memory. The first conversation of a new user, whose bank does not exist yet, is not an error.
+
+The agent's runner reads a streamed answer and runs the tool calls before the output processors, so the processor retains the final answer in both cases. For a stream, that happens after its last chunk, inside the loop that reads it. When the model also returns reasoning, only the answer's text is retained.
+
 ## Queued retains
 
 By default the middleware stores each exchange during the run, and when the Hindsight API is unavailable that exchange is lost: the error is reported and the agent goes on. Add `queue()` and the exchange is stored by a queued job instead:
@@ -544,7 +581,7 @@ To check a single HTTP call yourself, bind any PSR-18 client as `hindsight.http`
 ## How this package is tested
 
 - **Every request in the unit tests is checked against Hindsight's own [OpenAPI document](tests/Fixtures/openapi-1.1.0.json)**, downloaded from the `v1.1.0` tag. Operations that came later, such as pages, are checked against the [1.2.1 document](tests/Fixtures/openapi-1.2.1.json). The check is stricter than the server: Hindsight answers `200` for unknown fields, so a misspelled field name in the client would never fail a request. The tests reject it. Response fixtures are checked against the same document.
-- **CI starts real Hindsight 1.1.0, 1.2.0 and 1.2.1 servers** (`hindsight-api-slim` with local ONNX embeddings and no LLM) and runs the integration suite against it, including a Laravel AI agent that remembers a fact from one conversation in the next. The job runs on every push and weekly, so a new Hindsight release that breaks something shows up quickly.
+- **CI starts real Hindsight 1.1.0, 1.2.0 and 1.2.1 servers** (`hindsight-api-slim` with local ONNX embeddings and no LLM) and runs the integration suite against it, including a Laravel AI agent and a Symfony AI agent that each remember a fact from one conversation in the next. The job runs on every push and weekly, so a new Hindsight release that breaks something shows up quickly.
 - **The fake is checked against the same OpenAPI document and against real servers.** A unit test sends a call to every endpoint the fake simulates and validates each request and successful answer against the schema. The integration suite runs the same tag filters, document replacement, missing bank, rejected retains and accepted timestamps on the fake and on real Hindsight 1.1.0, 1.2.0 and 1.2.1, and compares the results. The fake must answer exactly what the document describes; a real server may add fields, as 1.2.1 did with `paused_mental_models` in the bank stats.
 - **Queued retains run through Laravel's `queue:work --once` command** on the database queue driver, inside the test process with time travel: a job released while Hindsight answers `503` is stored once it is back, a retry after a lost answer sends the same operation ID, only the last failed attempt is reported, and a `401` fails the job without retries. Against a real server, a job run twice is one operation and one memory, while the same async retain sent twice without an operation ID stores two copies.
 - PHPStan at level 9. The client reads response fields without trusting their types, so an unexpected value from the server becomes `null` instead of a `TypeError`.
@@ -559,6 +596,7 @@ Without an LLM the server cannot run reflect or mental models, so those are cove
 | Laravel | 12, 13 | 12, 13 |
 | Laravel AI SDK | 1.x | latest and lowest allowed |
 | Laravel MCP | 1.x | latest and lowest allowed |
+| Symfony AI agent | 0.15, 1.0 | 0.15 and 1.0.0-BETA1 |
 | Hindsight API | 1.1, 1.2 (pages need 1.2.1) | 1.1.0, 1.2.0, 1.2.1 |
 | Guzzle | 7.15+, 8 | 7 and 8 |
 
