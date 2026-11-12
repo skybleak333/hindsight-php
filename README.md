@@ -462,6 +462,47 @@ Without `throw`, a failed recall or retain is logged as a warning to the `logger
 
 The agent's runner reads a streamed answer and runs the tool calls before the output processors, so the processor retains the final answer in both cases. For a stream, that happens after its last chunk, inside the loop that reads it. When the model also returns reasoning, only the answer's text is retained.
 
+### Memory tools for Symfony AI agents
+
+To let the model decide when to look something up or what to remember, give the agent the tools instead of, or next to, `HindsightMemory`. `Recall` (`recall_memory`), `Retain` (`retain_memory`) and `Reflect` (`reflect_memory`) carry `#[AsTool]`, so they go into a `Toolbox` like any other tool:
+
+```php
+use Fedoseev\Hindsight\Symfony\Ai\Tools\Recall;
+use Fedoseev\Hindsight\Symfony\Ai\Tools\Reflect;
+use Fedoseev\Hindsight\Symfony\Ai\Tools\Retain;
+use Symfony\AI\Agent\Agent;
+use Symfony\AI\Agent\Toolbox\Toolbox;
+
+// as above, for an agent that answers signed-in users only
+$bank = fn (): string => 'user-'.$security->getUser()->getUserIdentifier();
+
+$toolbox = new Toolbox([
+    new Recall($hindsight, $bank),
+    new Retain($hindsight, $bank),
+    new Reflect($hindsight, $bank), // needs a Hindsight server with an LLM
+]);
+
+$agent = new Agent($platform, 'gpt-5-mini', toolbox: $toolbox);
+```
+
+They take the bank, `tags` and `tagsMatch` like `HindsightMemory`, and `budget` (recall and reflect), `maxTokens` (recall), `async` (retain), `timeout` and `logger` as named arguments. Their texts and defaults are the same as in the [Laravel AI SDK tools](#the-tools): a recall gives the memories most relevant first, a new user's empty bank is "No relevant memories found.", and when Hindsight fails the model gets `Memory is unavailable: ...` and can answer without memory; the error is logged as a warning to the `logger` you pass.
+
+`#[AsTool]` gives each tool a fixed name, so two `Recall` tools for two banks would both be `recall_memory`, and the toolbox would send every call to one of them. Register the second one under its own name:
+
+```php
+use Symfony\AI\Agent\Toolbox\ToolFactory\ChainFactory;
+use Symfony\AI\Agent\Toolbox\ToolFactory\MemoryToolFactory;
+use Symfony\AI\Agent\Toolbox\ToolFactory\ReflectionToolFactory;
+
+$teamRecall = new Recall($hindsight, 'team');
+$factory = (new MemoryToolFactory())->addTool($teamRecall, 'recall_team_memory', "Search the team's shared memory.");
+
+$toolbox = new Toolbox(
+    [new Recall($hindsight, $bank), $teamRecall],
+    new ChainFactory([$factory, new ReflectionToolFactory()]),
+);
+```
+
 ## Queued retains
 
 By default the middleware stores each exchange during the run, and when the Hindsight API is unavailable that exchange is lost: the error is reported and the agent goes on. Add `queue()` and the exchange is stored by a queued job instead:

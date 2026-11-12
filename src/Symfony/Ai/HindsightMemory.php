@@ -87,7 +87,8 @@ final class HindsightMemory implements MemoryProviderInterface, OutputProcessorI
                 budget: $this->budget,
                 maxTokens: $this->maxTokens,
                 tags: $this->tags,
-                tagsMatch: $this->tagsMatch,
+                // The match mode only means something with tags, so without them the API default is sent.
+                tagsMatch: $this->tags === null ? TagsMatch::Any : $this->tagsMatch,
             );
         } catch (NotFoundException $exception) {
             // Reads of a bank nobody has written to yet answer 404: a new user simply has no memories.

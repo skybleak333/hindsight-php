@@ -2,6 +2,16 @@
 
 All notable changes to this package are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the package uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- Memory tools for Symfony AI agents: `Recall` (`recall_memory`), `Retain` (`retain_memory`) and `Reflect` (`reflect_memory`) in `Fedoseev\Hindsight\Symfony\Ai\Tools`, with `#[AsTool]` and described parameters, so the model decides when to recall or store. Same texts and defaults as the Laravel AI SDK tools; Hindsight errors become a tool result and a warning in the logger you pass.
+
+### Changed
+
+- `HindsightMemory` no longer sends `tags_match` when it has no `tags`. The server ignores it without tags, so recalls return the same memories.
+
 ## [0.8.0] - 2026-11-12
 
 ### Added
