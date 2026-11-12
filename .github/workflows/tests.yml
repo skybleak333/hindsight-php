@@ -122,21 +122,26 @@ jobs:
         run: vendor/bin/phpunit --testsuite symfony
 
   neuron:
-    name: PHP 8.4, Neuron AI${{ matrix.stability == 'prefer-lowest' && ', lowest deps' || '' }}
+    name: PHP ${{ matrix.php }}, Neuron AI${{ matrix.stability == 'prefer-lowest' && ', lowest deps' || '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
     strategy:
       fail-fast: false
       matrix:
-        stability: ['prefer-stable', 'prefer-lowest']
+        include:
+          - php: '8.4'
+            stability: 'prefer-stable'
+          # The lowest psr/http-factory (1.0) triggers PHP 8.4's deprecation of implicitly nullable parameters.
+          - php: '8.3'
+            stability: 'prefer-lowest'
 
     steps:
       - uses: actions/checkout@v5
 
       - uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.4'
+          php-version: ${{ matrix.php }}
           coverage: none
 
       - name: Install dependencies
