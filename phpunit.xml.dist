@@ -20,6 +20,9 @@
         <testsuite name="symfony">
             <directory>tests/Symfony</directory>
         </testsuite>
+        <testsuite name="neuron">
+            <directory>tests/Neuron</directory>
+        </testsuite>
         <testsuite name="integration">
             <directory>tests/Integration</directory>
         </testsuite>

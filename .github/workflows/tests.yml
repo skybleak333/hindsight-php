@@ -82,7 +82,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          composer remove --dev laravel/ai laravel/mcp orchestra/testbench symfony/ai-agent --no-update --no-interaction
+          composer remove --dev laravel/ai laravel/mcp orchestra/testbench symfony/ai-agent neuron-core/neuron-ai --no-update --no-interaction
           composer update --${{ matrix.stability }} --prefer-dist --no-interaction --no-progress
 
       - name: Show versions
@@ -120,6 +120,35 @@ jobs:
 
       - name: Run tests
         run: vendor/bin/phpunit --testsuite symfony
+
+  neuron:
+    name: PHP 8.4, Neuron AI${{ matrix.stability == 'prefer-lowest' && ', lowest deps' || '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    strategy:
+      fail-fast: false
+      matrix:
+        stability: ['prefer-stable', 'prefer-lowest']
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+
+      - name: Install dependencies
+        run: |
+          composer remove --dev laravel/ai laravel/mcp orchestra/testbench symfony/ai-agent --no-update --no-interaction
+          composer update --${{ matrix.stability }} --prefer-dist --no-interaction --no-progress
+
+      - name: Show versions
+        run: composer show | grep -E '^(neuron-core/neuron-ai|guzzlehttp/guzzle|phpunit/phpunit) '
+
+      - name: Run tests
+        run: vendor/bin/phpunit --testsuite neuron
 
   static-analysis:
     name: PHPStan

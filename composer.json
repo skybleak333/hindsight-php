@@ -1,6 +1,6 @@
 {
     "name": "fedoseev/hindsight-php",
-    "description": "PHP client for Hindsight agent memory, with long-term memory for Laravel AI SDK agents, Laravel MCP servers and Symfony AI agents.",
+    "description": "PHP client for Hindsight agent memory, with long-term memory for Laravel AI SDK agents, Laravel MCP servers, Symfony AI agents and Neuron AI agents.",
     "keywords": [
         "hindsight",
         "agent memory",
@@ -10,6 +10,7 @@
         "laravel-ai",
         "mcp",
         "memory",
+        "neuron-ai",
         "rag",
         "symfony",
         "symfony-ai"
@@ -33,6 +34,7 @@
     "require-dev": {
         "laravel/ai": "^1.0",
         "laravel/mcp": "^1.0",
+        "neuron-core/neuron-ai": "^4.1",
         "opis/json-schema": "^2.4",
         "opis/string": "^2.0.1",
         "orchestra/testbench": "^10.0 || ^11.0",
@@ -43,7 +45,8 @@
     "suggest": {
         "laravel/ai": "Long-term memory middleware and tools for Laravel AI SDK agents (^1.0).",
         "laravel/mcp": "Memory tools for Laravel MCP servers (^1.0).",
-        "symfony/ai-agent": "Long-term memory for Symfony AI agents (^0.15 or ^1.0)."
+        "symfony/ai-agent": "Long-term memory for Symfony AI agents (^0.15 or ^1.0).",
+        "neuron-core/neuron-ai": "Memory tools for Neuron AI agents (^4.1)."
     },
     "autoload": {
         "psr-4": {
@@ -66,7 +69,7 @@
         }
     },
     "scripts": {
-        "test": "phpunit --testsuite unit,laravel,symfony",
+        "test": "phpunit --testsuite unit,laravel,symfony,neuron",
         "test:integration": "phpunit --testsuite integration",
         "analyse": "phpstan analyse"
     },

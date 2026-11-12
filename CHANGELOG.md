@@ -2,6 +2,12 @@
 
 All notable changes to this package are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the package uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- Memory tools for [Neuron AI](https://github.com/neuron-core/neuron-ai) agents (4.1 and later): `Fedoseev\Hindsight\Neuron\HindsightToolkit` gives an agent `recall_memory`, `retain_memory` and `reflect_memory` on one bank, with guidelines for the system prompt; the tools are also usable on their own from `Fedoseev\Hindsight\Neuron\Tools`. Same texts and defaults as the Laravel AI SDK tools.
+
 ## [0.9.0] - 2026-11-12
 
 ### Added

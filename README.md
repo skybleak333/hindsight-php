@@ -4,7 +4,7 @@
 [![PHP](https://img.shields.io/badge/php-8.2%2B-777bb4)](composer.json)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-A PHP client for [Hindsight](https://github.com/vectorize-io/hindsight), the open-source memory server for AI agents, and long-term memory for [Laravel AI SDK](https://github.com/laravel/ai) agents, [Laravel MCP](https://github.com/laravel/mcp) servers and [Symfony AI](https://github.com/symfony/ai) agents.
+A PHP client for [Hindsight](https://github.com/vectorize-io/hindsight), the open-source memory server for AI agents, and long-term memory for [Laravel AI SDK](https://github.com/laravel/ai) agents, [Laravel MCP](https://github.com/laravel/mcp) servers, and [Symfony AI](https://github.com/symfony/ai) and [Neuron AI](https://github.com/neuron-core/neuron-ai) agents.
 
 A Laravel AI agent forgets everything when the conversation ends. With one middleware it remembers: before it answers, it recalls what it knows about the user; after it answers, it stores the exchange.
 
@@ -53,6 +53,7 @@ This is a community package. It is not affiliated with Vectorize, the company be
 - [Memory for Laravel AI SDK agents](#memory-for-laravel-ai-sdk-agents)
 - [Memory tools for MCP servers](#memory-tools-for-mcp-servers)
 - [Memory for Symfony AI agents](#memory-for-symfony-ai-agents)
+- [Memory tools for Neuron AI agents](#memory-tools-for-neuron-ai-agents)
 - [Queued retains](#queued-retains)
 - [Errors](#errors)
 - [Testing your application](#testing-your-application)
@@ -503,6 +504,24 @@ $toolbox = new Toolbox(
 );
 ```
 
+## Memory tools for Neuron AI agents
+
+For [Neuron AI](https://github.com/neuron-core/neuron-ai) agents (needs `neuron-core/neuron-ai` 4.1 or later), `HindsightToolkit` gives the model the same three tools on one bank, `recall_memory`, `retain_memory` and `reflect_memory`, plus guidelines in the system prompt that tell it to recall before answering questions about the past and to store lasting facts:
+
+```php
+use Fedoseev\Hindsight\Neuron\HindsightToolkit;
+use NeuronAI\Chat\Messages\UserMessage;
+
+// SupportAgent extends NeuronAI\Agent\Agent and defines provider() and instructions() as usual
+$agent = SupportAgent::make()
+    ->setThreadId($threadId)
+    ->addTool(new HindsightToolkit($hindsight, "user-{$user->id}"));
+
+$agent->chat(new UserMessage('When does my plan renew?'));
+```
+
+The bank can also be a closure that returns it, `tags` are given to stored memories and required on recalled ones, and `logger` takes a PSR-3 logger for Hindsight errors. Reflect needs a Hindsight server with an LLM; leave it out with `->exclude([Reflect::class])`, as with any Neuron toolkit. For other options, use the tools on their own: `Fedoseev\Hindsight\Neuron\Tools\Recall`, `Retain` and `Reflect` take the same named arguments as the [Symfony AI tools](#memory-tools-for-symfony-ai-agents). Their texts and defaults match the Laravel AI SDK tools, and when Hindsight fails the model gets `Memory is unavailable: ...` and the error goes to the `logger` you pass.
+
 ## Queued retains
 
 By default the middleware stores each exchange during the run, and when the Hindsight API is unavailable that exchange is lost: the error is reported and the agent goes on. Add `queue()` and the exchange is stored by a queued job instead:
@@ -638,6 +657,7 @@ Without an LLM the server cannot run reflect or mental models, so those are cove
 | Laravel AI SDK | 1.x | latest and lowest allowed |
 | Laravel MCP | 1.x | latest and lowest allowed |
 | Symfony AI agent | 0.15, 1.0 | 0.15 and 1.0.0-BETA1 |
+| Neuron AI | 4.1+ | latest and lowest allowed |
 | Hindsight API | 1.1, 1.2 (pages need 1.2.1) | 1.1.0, 1.2.0, 1.2.1 |
 | Guzzle | 7.15+, 8 | 7 and 8 |
 
