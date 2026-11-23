@@ -20,6 +20,7 @@ use Psr\Http\Client\ClientInterface;
 use Psr\Http\Message\RequestFactoryInterface;
 use Psr\Http\Message\StreamFactoryInterface;
 use Psr\Log\LoggerInterface;
+use SensitiveParameter;
 use stdClass;
 
 /**
@@ -771,6 +772,77 @@ class Hindsight
 
             usleep((int) (min($interval, $remaining) * 1_000_000));
         }
+    }
+
+    // Webhooks
+
+    /**
+     * @param  list<string>|null  $eventTypes  The events to deliver. Null uses the server default.
+     * @param  array<string, mixed>|null  $httpConfig  Delivery method, timeout_seconds, headers and params.
+     * @return array<string, mixed>
+     */
+    public function createWebhook(
+        string $bankId,
+        string $url,
+        #[SensitiveParameter] ?string $secret = null,
+        ?array $eventTypes = null,
+        ?bool $enabled = null,
+        #[SensitiveParameter] ?array $httpConfig = null,
+    ): array {
+        return $this->transport->json('POST', Transport::path('/v1/default/banks/%s/webhooks', $bankId), self::withoutNulls([
+            'url' => $url,
+            'secret' => $secret,
+            'event_types' => $eventTypes,
+            'enabled' => $enabled,
+            'http_config' => $httpConfig === null ? null : self::webhookHttpConfig($httpConfig),
+        ]));
+    }
+
+    /** @return array<string, mixed> */
+    public function listWebhooks(string $bankId, ?int $limit = null, ?int $offset = null): array
+    {
+        return $this->transport->json('GET', Transport::path('/v1/default/banks/%s/webhooks', $bankId), query: [
+            'limit' => $limit, 'offset' => $offset,
+        ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $changes  Keys as in the API. Set secret to null to clear it.
+     * @return array<string, mixed>
+     */
+    public function updateWebhook(string $bankId, string $webhookId, #[SensitiveParameter] array $changes): array
+    {
+        if (is_array($changes['http_config'] ?? null)) {
+            $changes['http_config'] = self::webhookHttpConfig($changes['http_config']);
+        }
+
+        return $this->transport->json('PATCH', Transport::path('/v1/default/banks/%s/webhooks/%s', $bankId, $webhookId), $changes);
+    }
+
+    /** @return array<string, mixed> */
+    public function deleteWebhook(string $bankId, string $webhookId): array
+    {
+        return $this->transport->json('DELETE', Transport::path('/v1/default/banks/%s/webhooks/%s', $bankId, $webhookId));
+    }
+
+    /** @return array<string, mixed> */
+    public function listWebhookDeliveries(string $bankId, string $webhookId, ?int $limit = null, ?string $cursor = null): array
+    {
+        return $this->transport->json('GET', Transport::path('/v1/default/banks/%s/webhooks/%s/deliveries', $bankId, $webhookId), query: [
+            'limit' => $limit, 'cursor' => $cursor,
+        ]);
+    }
+
+    /** @param array<array-key, mixed> $config */
+    private static function webhookHttpConfig(#[SensitiveParameter] array $config): object
+    {
+        foreach (['headers', 'params'] as $key) {
+            if (is_array($config[$key] ?? null)) {
+                $config[$key] = (object) $config[$key];
+            }
+        }
+
+        return (object) $config;
     }
 
     // Anything else

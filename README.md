@@ -49,6 +49,7 @@ This is a community package. It is not affiliated with Vectorize, the company be
 - [Installation](#installation)
 - [Run a Hindsight server](#run-a-hindsight-server)
 - [The client](#the-client)
+- [Webhooks](#webhooks)
 - [Laravel](#laravel)
 - [Memory for Laravel AI SDK agents](#memory-for-laravel-ai-sdk-agents)
 - [Memory tools for MCP servers](#memory-tools-for-mcp-servers)
@@ -194,6 +195,7 @@ $answer->structuredOutput; // ['city' => 'Rotterdam']
 | Mental models | `createMentalModel`, `listMentalModels`, `getMentalModel`, `updateMentalModel`, `deleteMentalModel`, `refreshMentalModel` |
 | Pages (Hindsight 1.2.1+) | `getPageTree`, `createPage`, `createPageFolder`, `getPage`, `searchPages`, `exportPages`, `updatePageNode`, `deletePageNode` |
 | Operations | `getOperation`, `listOperations`, `cancelOperation`, `retryOperation`, `waitForOperation` |
+| Webhooks | `createWebhook`, `listWebhooks`, `updateWebhook`, `deleteWebhook`, `listWebhookDeliveries` |
 | Server | `health`, `version` |
 
 Bank settings such as the reflect mission and disposition live in the bank configuration since Hindsight 1.1 (the old profile endpoints answer `410 Gone`):
@@ -249,6 +251,31 @@ $hindsight->recall('support', 'plan', options: ['max_token' => 500]);
 ```
 
 In Laravel the warning goes to your default log channel without any setup.
+
+## Webhooks
+
+Subscribe to `retain.completed` to react when Hindsight finishes storing a document. `createWebhook()` registers the receiver for a bank. `listWebhookDeliveries()` shows delivery status, attempt count and the last response status. Use its `next_cursor` to request the next page. [Hindsight webhook events](https://hindsight.vectorize.io/developer/api/webhooks)
+
+```php
+$hook = $hindsight->createWebhook(
+    'support',
+    'https://app.example.test/webhooks/hindsight',
+    secret: $secret,
+    eventTypes: ['retain.completed'],
+);
+
+$deliveries = $hindsight->listWebhookDeliveries('support', $hook['id'], limit: 10);
+```
+
+Pass the unmodified HTTP body and `X-Hindsight-Signature-V2` header to `WebhookEvent::verify()`. It authenticates the body with the webhook secret and checks the signed timestamp against a five-minute window by default. Verification errors throw `InvalidWebhookException`.
+
+```php
+use Fedoseev\Hindsight\WebhookEvent;
+
+$event = WebhookEvent::verify($rawBody, $signatureV2, $secret);
+```
+
+Use the verified `$event->eventId` as the unique key in your handler. Hindsight retries deliveries with the same event ID and a fresh signature. A single `$event->operationId` can cover several documents in a batch, each with its own event ID. [Delivery and retry behavior](https://hindsight.vectorize.io/developer/api/webhooks#delivery-and-retries)
 
 ## Laravel
 
@@ -624,6 +651,7 @@ Every exception implements `Fedoseev\Hindsight\Exceptions\HindsightException`.
 | `ValidationException` | 422: the server rejected the request. `errors()` lists the fields. |
 | `ApiException` | Any other error status. Has `statusCode` and `body`. The three above extend it. |
 | `UnexpectedResponseException` | A success status with a body that is not JSON, for example when the URL points at the web UI. |
+| `InvalidWebhookException` | The webhook signature, timestamp or payload failed validation. |
 | `OperationFailedException`, `TimeoutException` | From `waitForOperation()`. |
 
 The message always contains the server's explanation:

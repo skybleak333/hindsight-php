@@ -16,6 +16,7 @@ use Psr\Http\Client\ClientInterface;
 use Psr\Http\Message\RequestFactoryInterface;
 use Psr\Http\Message\StreamFactoryInterface;
 use Psr\Log\LoggerInterface;
+use SensitiveParameter;
 use stdClass;
 
 /**
@@ -46,7 +47,7 @@ final class Transport
      * @param  array<array-key, mixed>|object|null  $body
      * @param  array<string, mixed>  $query  Null values are skipped; list values repeat the key, as FastAPI expects.
      */
-    public function send(string $method, string $path, array|object|null $body = null, array $query = []): mixed
+    public function send(string $method, string $path, #[SensitiveParameter] array|object|null $body = null, array $query = []): mixed
     {
         $queryString = self::queryString($query);
 
@@ -101,7 +102,7 @@ final class Transport
      * @param  array<string, mixed>  $query
      * @return array<string, mixed>
      */
-    public function json(string $method, string $path, array|object|null $body = null, array $query = []): array
+    public function json(string $method, string $path, #[SensitiveParameter] array|object|null $body = null, array $query = []): array
     {
         $payload = $this->send($method, $path, $body, $query);
 

@@ -192,6 +192,7 @@ jobs:
       HINDSIGHT_API_RERANKER_PROVIDER: rrf
       HINDSIGHT_API_HOST: 127.0.0.1
       HINDSIGHT_API_PORT: '8888'
+      HINDSIGHT_API_WEBHOOK_ALLOWED_HOSTS: 127.0.0.1
 
     steps:
       - uses: actions/checkout@v5
@@ -230,6 +231,7 @@ jobs:
         env:
           HINDSIGHT_TEST_URL: http://127.0.0.1:8888
           HINDSIGHT_TEST_REQUIRED: '1'
+          HINDSIGHT_TEST_WEBHOOKS: '1'
         run: vendor/bin/phpunit --testsuite integration
 
       - name: Hindsight log
