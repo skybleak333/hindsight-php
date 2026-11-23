@@ -182,7 +182,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        hindsight: ['1.1.0', '1.2.0', '1.2.1']
+        hindsight: ['1.1.0', '1.2.0', '1.2.1', '1.2.3']
 
     env:
       # No LLM: retain stores chunks without fact extraction, recall works, reflect answers 400.

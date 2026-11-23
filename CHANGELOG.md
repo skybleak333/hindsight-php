@@ -2,6 +2,16 @@
 
 All notable changes to this package are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the package uses [Semantic Versioning](https://semver.org/).
 
+## [0.12.0] - 2026-11-23
+
+### Added
+
+- `php artisan hindsight:recall` shows the memories the Laravel AI middleware would add for a message. It supports the middleware's retrieval budget, token limit, fact types and tag filters. See [#2](https://github.com/skybleak333/hindsight-php/issues/2).
+
+### Changed
+
+- CI also runs the integration suite against Hindsight 1.2.3.
+
 ## [0.11.0] - 2026-11-12
 
 ### Added
@@ -112,6 +122,7 @@ First release. Tested against Hindsight 1.1.0, Laravel 12 and 13, and Laravel AI
 - `withTimeout()` for a copy of the client with a shorter timeout. The middleware and tools use short timeouts by default, so a hung server does not hold up an agent for two minutes.
 - `ConfigurationException` for a malformed URL, thrown when the client is created.
 
+[0.12.0]: https://github.com/skybleak333/hindsight-php/releases/tag/v0.12.0
 [0.11.0]: https://github.com/skybleak333/hindsight-php/releases/tag/v0.11.0
 [0.10.0]: https://github.com/skybleak333/hindsight-php/releases/tag/v0.10.0
 [0.9.0]: https://github.com/skybleak333/hindsight-php/releases/tag/v0.9.0

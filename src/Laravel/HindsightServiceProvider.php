@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Fedoseev\Hindsight\Laravel;
 
 use Fedoseev\Hindsight\Hindsight;
+use Fedoseev\Hindsight\Laravel\Console\RecallCommand;
 use Fedoseev\Hindsight\Laravel\Console\StatusCommand;
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Contracts\Foundation\Application;
@@ -45,7 +46,7 @@ final class HindsightServiceProvider extends ServiceProvider
                 __DIR__.'/../../config/hindsight.php' => $this->app->configPath('hindsight.php'),
             ], 'hindsight-config');
 
-            $this->commands([StatusCommand::class]);
+            $this->commands([StatusCommand::class, RecallCommand::class]);
         }
     }
 }

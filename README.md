@@ -63,14 +63,8 @@ This is a community package. It is not affiliated with Vectorize, the company be
 ## Installation
 
 ```bash
-composer require fedoseev/hindsight-php
-```
-
-Until the package is listed on Packagist, tell Composer where to find it first:
-
-```bash
 composer config repositories.hindsight-php vcs https://github.com/skybleak333/hindsight-php
-composer require fedoseev/hindsight-php:^0.11
+composer require fedoseev/hindsight-php
 ```
 
 The client needs PHP 8.2+ and works in any PHP project. The Laravel integration is discovered automatically. The agent memory needs [`laravel/ai`](https://github.com/laravel/ai) 1.x and PHP 8.3+. The MCP tools need [`laravel/mcp`](https://github.com/laravel/mcp) 1.x.
@@ -271,6 +265,14 @@ Check the connection:
 php artisan hindsight:status
 php artisan hindsight:status --bank=support
 ```
+
+To check which memories the Laravel AI middleware would add for a message, run recall directly:
+
+```bash
+php artisan hindsight:recall support "When does my plan renew?" --tags=user:42 --tags=billing --tags-match=all_strict
+```
+
+The command prints each memory in prompt format and reports the result count. It uses the middleware's default retrieval budget (`low`) and token limit (1024). Tags match any supplied value and exclude untagged memories by default. Use `--budget`, `--max-tokens`, repeatable `--type`, and `--tags-match` to reproduce a different middleware configuration.
 
 The client is a singleton in the container. Inject `Fedoseev\Hindsight\Hindsight` or use the facade:
 
@@ -663,7 +665,7 @@ To check a single HTTP call yourself, bind any PSR-18 client as `hindsight.http`
 ## How this package is tested
 
 - **Every request in the unit tests is checked against Hindsight's own [OpenAPI document](tests/Fixtures/openapi-1.1.0.json)**, downloaded from the `v1.1.0` tag. Operations that came later, such as pages, are checked against the [1.2.1 document](tests/Fixtures/openapi-1.2.1.json). The check is stricter than the server: Hindsight answers `200` for unknown fields, so a misspelled field name in the client would never fail a request. The tests reject it. Response fixtures are checked against the same document.
-- **CI starts real Hindsight 1.1.0, 1.2.0 and 1.2.1 servers** (`hindsight-api-slim` with local ONNX embeddings and no LLM) and runs the integration suite against it, including a Laravel AI agent and a Symfony AI agent that each remember a fact from one conversation in the next. The job runs on every push and weekly, so a new Hindsight release that breaks something shows up quickly.
+- **CI starts real Hindsight 1.1.0, 1.2.0, 1.2.1 and 1.2.3 servers** (`hindsight-api-slim` with local ONNX embeddings and no LLM) and runs the integration suite against them, including a Laravel AI agent and a Symfony AI agent that each remember a fact from one conversation in the next.
 - **The fake is checked against the same OpenAPI document and against real servers.** A unit test sends a call to every endpoint the fake simulates and validates each request and successful answer against the schema. The integration suite runs the same tag filters, document replacement, missing bank, rejected retains and accepted timestamps on the fake and on real Hindsight 1.1.0, 1.2.0 and 1.2.1, and compares the results. The fake must answer exactly what the document describes; a real server may add fields, as 1.2.1 did with `paused_mental_models` in the bank stats.
 - **Queued retains run through Laravel's `queue:work --once` command** on the database queue driver, inside the test process with time travel: a job released while Hindsight answers `503` is stored once it is back, a retry after a lost answer sends the same operation ID, only the last failed attempt is reported, and a `401` fails the job without retries. Against a real server, a job run twice is one operation and one memory, while the same async retain sent twice without an operation ID stores two copies.
 - PHPStan at level 9. The client reads response fields without trusting their types, so an unexpected value from the server becomes `null` instead of a `TypeError`.

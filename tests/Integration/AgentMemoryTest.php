@@ -103,4 +103,20 @@ final class AgentMemoryTest extends TestCase
         $this->assertIsString($toolOutput);
         $this->assertStringContainsString('Enterprise plan', $toolOutput);
     }
+
+    public function test_the_recall_command_reads_tagged_memories_from_the_real_bank(): void
+    {
+        $bank = $this->newBank();
+        $this->hindsight->retain($bank, 'The customer Erin is on the Enterprise plan.', tags: ['user:42']);
+        $this->hindsight->retain($bank, 'The customer Erin is on the Starter plan.');
+
+        $this->artisan('hindsight:recall', [
+            'bank' => $bank,
+            'query' => 'Which plan is Erin on?',
+            '--tags' => ['user:42'],
+        ])
+            ->expectsOutputToContain('Enterprise plan')
+            ->expectsOutput('1 result.')
+            ->assertSuccessful();
+    }
 }
