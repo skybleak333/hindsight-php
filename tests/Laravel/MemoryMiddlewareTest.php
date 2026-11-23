@@ -9,12 +9,14 @@ use Fedoseev\Hindsight\Budget;
 use Fedoseev\Hindsight\Exceptions\ConnectionException;
 use Fedoseev\Hindsight\Exceptions\NotFoundException;
 use Fedoseev\Hindsight\Laravel\Ai\Memory;
+use Fedoseev\Hindsight\Responses\RecallResponse;
 use Fedoseev\Hindsight\Tests\Laravel\Fixtures\SupportAgent;
 use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Psr7\Request;
 use Illuminate\Support\Facades\Exceptions;
 use Laravel\Ai\PendingStep;
 use Laravel\Ai\Responses\Data\ToolCall;
+use RuntimeException;
 
 final class MemoryMiddlewareTest extends TestCase
 {
@@ -60,6 +62,60 @@ final class MemoryMiddlewareTest extends TestCase
         $this->agent(Memory::bank('b'))->prompt('Hi');
 
         $this->assertSame(['You are a support agent.'], $this->instructions);
+    }
+
+    public function test_it_formats_recall_once_and_passes_only_its_result_to_every_step(): void
+    {
+        SupportAgent::fake([new ToolCall('call_1', 'lookup_invoice', []), 'Invoice 7 is paid.']);
+        $this->queueRecall([
+            ['id' => 'f1', 'text' => 'Old policy: 30 days', 'document_id' => 'policy-v1'],
+            ['id' => 'f2', 'text' => 'Current policy: 14 days', 'document_id' => 'policy-v2'],
+        ]);
+
+        $calls = 0;
+        $memory = Memory::bank('b')->withoutRetain()->formatRecallUsing(function (RecallResponse $recall) use (&$calls): string {
+            $calls++;
+            $this->assertSame(['policy-v1', 'policy-v2'], array_column($recall->results, 'documentId'));
+
+            return '- '.$recall->results[1]->text.' [policy-v2]';
+        });
+
+        $this->agent($memory, tools: [new Fixtures\LookupInvoice])->prompt('Is invoice 7 paid?');
+
+        $this->assertSame(1, $calls);
+        $this->assertSame(['POST /v1/default/banks/b/memories/recall'], $this->sentPaths());
+        $this->assertCount(2, $this->instructions);
+        $this->assertSame($this->instructions[0], $this->instructions[1]);
+        $this->assertStringContainsString('- Current policy: 14 days [policy-v2]', $this->instructions[0] ?? '');
+        $this->assertStringNotContainsString('Old policy', $this->instructions[0] ?? '');
+    }
+
+    public function test_a_formatter_can_omit_all_recalled_content(): void
+    {
+        SupportAgent::fake(['Hello!']);
+        $this->queueRecall([['id' => 'f1', 'text' => 'This fact is out of scope']]);
+
+        $memory = Memory::bank('b')->withoutRetain()->formatRecallUsing(static fn (RecallResponse $recall): ?string => null);
+        $this->agent($memory)->prompt('Hi');
+
+        $this->assertSame(['You are a support agent.'], $this->instructions);
+    }
+
+    public function test_the_agent_stops_before_generation_when_the_formatter_fails(): void
+    {
+        SupportAgent::fake(['Hello!']);
+        $this->queueRecall([['id' => 'f1', 'text' => 'Unverified policy']]);
+
+        $memory = Memory::bank('b')->formatRecallUsing(static fn (RecallResponse $recall): string => throw new RuntimeException('Policy catalog unavailable.'));
+
+        try {
+            $this->expectException(RuntimeException::class);
+            $this->expectExceptionMessage('Policy catalog unavailable.');
+            $this->agent($memory)->prompt('Hi');
+        } finally {
+            $this->assertSame([], $this->instructions);
+            $this->assertSame(['POST /v1/default/banks/b/memories/recall'], $this->sentPaths());
+        }
     }
 
     public function test_it_retains_the_exchange_after_the_answer(): void

@@ -332,6 +332,7 @@ public function middleware(): array
 | Method | What it does |
 |---|---|
 | `recallBudget($budget, $maxTokens, $types)` | How hard recall searches and how much it may add. Default `Budget::Low` and 1,024 tokens, to keep latency down. |
+| `formatRecallUsing($formatter)` | Filter, reorder or cite recalls before adding them to the agent's instructions. |
 | `tags($tags, $match)` | Recall only memories with these tags and tag the stored exchanges. Untagged memories are left out by default (`TagsMatch::AnyStrict`), so a bank shared by many users does not mix them up. Pass `TagsMatch::Any` to include untagged memories, such as knowledge every user should get. |
 | `document($id)` | Append every exchange to one document (`update_mode: append`) instead of storing each separately. |
 | `context($text)` | Describe the source of the conversations. |
@@ -345,6 +346,8 @@ public function middleware(): array
 Memory is best effort by default. If Hindsight is down, too slow or answers with an error, the middleware reports the exception through Laravel's exception handler and the agent answers without memory. A hung server costs at most the 10-second timeout, not the client's 120 seconds. If you bound your own HTTP client as `hindsight.http`, its own timeout applies instead, so give it one. Call `throwOnError()` if a run without memory is worse than no run.
 
 List `Memory` first in `middleware()`. Then it sees each step as the model finally answers it, even when another middleware asks the model again.
+
+Use `formatRecallUsing()` when the application decides which sources belong in the prompt. The closure receives a `RecallResponse` once per run with results. Return a string for the memory block, or `null` to omit it. If the closure throws, the run stops before generation. [Memory Policy Audit](https://github.com/skybleak333/memory-policy-audit) uses this hook to check effective dates and cite approved policy revisions.
 
 ### The tools
 

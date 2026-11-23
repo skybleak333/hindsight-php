@@ -2,6 +2,12 @@
 
 All notable changes to this package are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the package uses [Semantic Versioning](https://semver.org/).
 
+## [0.15.0] - 2026-11-23
+
+### Added
+
+- Laravel AI memory middleware accepts a recall formatter. Applications can filter memories by source and attach citations before the first model call. The formatted context is reused across all steps of the run.
+
 ## [0.14.0] - 2026-11-23
 
 ### Added
@@ -134,6 +140,7 @@ First release. Tested against Hindsight 1.1.0, Laravel 12 and 13, and Laravel AI
 - `withTimeout()` for a copy of the client with a shorter timeout. The middleware and tools use short timeouts by default, so a hung server does not hold up an agent for two minutes.
 - `ConfigurationException` for a malformed URL, thrown when the client is created.
 
+[0.15.0]: https://github.com/skybleak333/hindsight-php/releases/tag/v0.15.0
 [0.14.0]: https://github.com/skybleak333/hindsight-php/releases/tag/v0.14.0
 [0.13.0]: https://github.com/skybleak333/hindsight-php/releases/tag/v0.13.0
 [0.12.0]: https://github.com/skybleak333/hindsight-php/releases/tag/v0.12.0

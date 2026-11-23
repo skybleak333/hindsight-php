@@ -10,6 +10,7 @@ use Fedoseev\Hindsight\Exceptions\HindsightException;
 use Fedoseev\Hindsight\Exceptions\NotFoundException;
 use Fedoseev\Hindsight\Hindsight;
 use Fedoseev\Hindsight\Laravel\Jobs\RetainMemory;
+use Fedoseev\Hindsight\Responses\RecallResponse;
 use Fedoseev\Hindsight\TagsMatch;
 use Illuminate\Contracts\Bus\Dispatcher;
 use Laravel\Ai\Gateway\StepResponse;
@@ -83,6 +84,9 @@ final class Memory
 
     private ?Hindsight $client = null;
 
+    /** @var (Closure(RecallResponse): ?string)|null */
+    private ?Closure $recallFormatter = null;
+
     /** The memories recalled for the run in $memoriesRun, added to every step of that run. */
     private ?string $memories = null;
 
@@ -124,6 +128,19 @@ final class Memory
         $this->budget = $budget;
         $this->maxTokens = $maxTokens;
         $this->types = $types;
+
+        return $this;
+    }
+
+    /**
+     * Turn the recalled memories into the text for the agent's instructions. A null or blank result omits
+     * the memory block. Formatter errors propagate to the agent's caller.
+     *
+     * @param  Closure(RecallResponse): ?string  $formatter
+     */
+    public function formatRecallUsing(Closure $formatter): self
+    {
+        $this->recallFormatter = $formatter;
 
         return $this;
     }
@@ -296,7 +313,15 @@ final class Memory
             return null;
         }
 
-        return "# Relevant Memories\nThe following information from long-term memory may be relevant:\n\n".$memories->toPrompt();
+        $context = $this->recallFormatter === null
+            ? $memories->toPrompt()
+            : ($this->recallFormatter)($memories);
+
+        if ($context === null || trim($context) === '') {
+            return null;
+        }
+
+        return "# Relevant Memories\nThe following information from long-term memory may be relevant:\n\n".$context;
     }
 
     private function retainExchange(string $message, string $answer): void
