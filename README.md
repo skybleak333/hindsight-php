@@ -476,6 +476,15 @@ $agent = new Agent($platform, 'gpt-5-mini', [new MemoryInputProcessor([$memory])
 
 The memories go into the system prompt under the agent's "Conversation Memory" section. `['use_memory' => false]` in the call options skips the recall, as for any memory provider; the exchange is still retained unless you pass `retain: false`.
 
+Pass `recallFormatter` to verify sources and attach citations before the recalled memories reach the model. The closure receives a `RecallResponse` when Hindsight finds memories. Return `null` or blank text to omit the memory block. An exception from the formatter reaches the caller before the model runs.
+
+```php
+// $context resolves recalled document IDs against an approved policy catalog.
+$memory = new HindsightMemory($hindsight, 'support-policies', retain: false, recallFormatter: $context(...));
+```
+
+[Memory Policy Audit](https://github.com/skybleak333/memory-policy-audit) provides a formatter that follows source revisions and adds the approved excerpt with its citation.
+
 In a Symfony app the agent is a shared service, so give the bank as a closure, called on every recall and retain. For an agent that also answers anonymous visitors, return a bank for them too: an error thrown by the closure stops the agent's call.
 
 ```php

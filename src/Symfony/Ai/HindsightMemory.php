@@ -9,6 +9,7 @@ use Fedoseev\Hindsight\Budget;
 use Fedoseev\Hindsight\Exceptions\HindsightException;
 use Fedoseev\Hindsight\Exceptions\NotFoundException;
 use Fedoseev\Hindsight\Hindsight;
+use Fedoseev\Hindsight\Responses\RecallResponse;
 use Fedoseev\Hindsight\TagsMatch;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
@@ -48,6 +49,7 @@ final class HindsightMemory implements MemoryProviderInterface, OutputProcessorI
      * @param  bool  $async  retain without waiting for Hindsight to extract the facts
      * @param  float|null  $timeout  seconds for each call; by default 10 for recall and an async retain,
      *                               and the client's own timeout for a retain that waits for the facts
+     * @param  (Closure(RecallResponse): ?string)|null  $recallFormatter  formats non-empty recall before the model call; returns null or blank to omit it
      */
     public function __construct(
         private readonly Hindsight $client,
@@ -64,6 +66,7 @@ final class HindsightMemory implements MemoryProviderInterface, OutputProcessorI
         private readonly ?float $timeout = null,
         private readonly bool $throw = false,
         private readonly LoggerInterface $logger = new NullLogger,
+        private readonly ?Closure $recallFormatter = null,
     ) {}
 
     /**
@@ -107,7 +110,15 @@ final class HindsightMemory implements MemoryProviderInterface, OutputProcessorI
             return [];
         }
 
-        return [new Memory("From long-term memory:\n".$memories->toPrompt())];
+        $context = $this->recallFormatter === null
+            ? $memories->toPrompt()
+            : ($this->recallFormatter)($memories);
+
+        if ($context === null || trim($context) === '') {
+            return [];
+        }
+
+        return [new Memory("From long-term memory:\n".$context)];
     }
 
     public function processOutput(Output $output): void

@@ -7,9 +7,11 @@ namespace Fedoseev\Hindsight\Tests\Symfony;
 use Fedoseev\Hindsight\Exceptions\ConnectionException;
 use Fedoseev\Hindsight\Exceptions\HindsightException;
 use Fedoseev\Hindsight\Hindsight;
+use Fedoseev\Hindsight\Responses\RecallResponse;
 use Fedoseev\Hindsight\Symfony\Ai\HindsightMemory;
 use Fedoseev\Hindsight\Testing\FakeServer;
 use Fedoseev\Hindsight\Tests\Support\ArrayLogger;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\AI\Agent\Agent;
 use Symfony\AI\Agent\Input;
@@ -85,6 +87,60 @@ final class HindsightMemoryTest extends TestCase
 
         $this->assertCount(1, $this->server->retained());
         $this->assertSame("USER: When does my plan renew?\nASSISTANT: It renews on the 1st.", $this->server->retained()[0]['item']['content']);
+    }
+
+    public function test_the_formatter_controls_the_memory_sent_to_the_model(): void
+    {
+        $this->server->seed('policies', [
+            ['text' => 'Old refund window', 'document_id' => 'refunds-v1'],
+            ['text' => 'Approved refund window', 'document_id' => 'refunds-v2'],
+        ]);
+        $memory = new HindsightMemory($this->client, 'policies', retain: false, recallFormatter: function (RecallResponse $recall): string {
+            $this->assertSame(['refunds-v1', 'refunds-v2'], [$recall->results[0]->documentId, $recall->results[1]->documentId]);
+
+            return '- '.$recall->results[1]->text.' (https://policies.example/refunds/v2)';
+        });
+        $platform = MockPlatformFactory::createPlatform(function ($model, $payload): string {
+            $prompt = json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+            $this->assertStringContainsString('Approved refund window (https://policies.example/refunds/v2)', $prompt);
+            $this->assertStringNotContainsString('Old refund window', $prompt);
+
+            return 'See the approved policy.';
+        });
+        $agent = new Agent($platform, 'gpt-test', [new MemoryInputProcessor([$memory])]);
+
+        $this->assertSame('See the approved policy.', $agent->call(new MessageBag(Message::ofUser('What is the refund window?')))->getContent());
+    }
+
+    #[DataProvider('omittedContexts')]
+    public function test_a_null_or_blank_formatter_result_omits_memory(?string $context): void
+    {
+        $this->server->seed('policies', ['Old refund window']);
+        $memory = new HindsightMemory($this->client, 'policies', recallFormatter: static fn (RecallResponse $recall): ?string => $context);
+
+        $this->assertSame([], $memory->load(new Input('gpt-test', new MessageBag(Message::ofUser('What is the refund window?')))));
+    }
+
+    /** @return iterable<string, array{?string}> */
+    public static function omittedContexts(): iterable
+    {
+        yield 'null' => [null];
+        yield 'whitespace' => [" \n"];
+    }
+
+    public function test_a_formatter_error_stops_the_agent_before_the_model_call(): void
+    {
+        $this->server->seed('policies', ['Old refund window']);
+        $memory = new HindsightMemory($this->client, 'policies', recallFormatter: static function (RecallResponse $recall): never {
+            throw new ConnectionException('Could not verify the policy source.');
+        });
+        $platform = MockPlatformFactory::createPlatform(fn () => $this->fail('The model received a prompt after the formatter failed.'));
+        $agent = new Agent($platform, 'gpt-test', [new MemoryInputProcessor([$memory])]);
+
+        $this->expectException(ConnectionException::class);
+        $this->expectExceptionMessage('Could not verify the policy source.');
+
+        $agent->call(new MessageBag(Message::ofUser('What is the refund window?')))->getContent();
     }
 
     public function test_the_answer_after_the_tool_calls_is_retained_once(): void
