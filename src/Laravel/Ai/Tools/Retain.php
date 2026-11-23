@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Fedoseev\Hindsight\Laravel\Ai\Tools;
 
+use Fedoseev\Hindsight\Laravel\Concerns\RetainsMemory;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Laravel\Ai\Tools\Request;
 
@@ -12,17 +13,7 @@ use Laravel\Ai\Tools\Request;
  */
 final class Retain extends MemoryTool
 {
-    private bool $async = true;
-
-    /**
-     * Wait until the server has extracted facts. By default the tool returns at once and the server works in the background.
-     */
-    public function synchronously(): self
-    {
-        $this->async = false;
-
-        return $this;
-    }
+    use RetainsMemory;
 
     public function description(): string
     {
@@ -38,12 +29,6 @@ final class Retain extends MemoryTool
         ];
     }
 
-    protected function defaultTimeout(): ?float
-    {
-        // A synchronous retain waits for fact extraction by the server's LLM.
-        return $this->async ? 15.0 : null;
-    }
-
     protected function defaultName(): string
     {
         return 'retain_memory';
@@ -53,14 +38,10 @@ final class Retain extends MemoryTool
     {
         $context = $request->string('context')->toString();
 
-        $this->client()->retain(
+        return $this->storeMemory(
             $this->bankId,
             $request->string('content')->toString(),
-            context: $context === '' ? null : $context,
-            tags: $this->tags,
-            async: $this->async,
+            $context === '' ? null : $context,
         );
-
-        return 'Stored in memory.';
     }
 }

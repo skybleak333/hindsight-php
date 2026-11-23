@@ -8,6 +8,7 @@ use Fedoseev\Hindsight\Budget;
 use Fedoseev\Hindsight\TagsMatch;
 use Fedoseev\Hindsight\Exceptions\NotFoundException;
 use Fedoseev\Hindsight\Laravel\Facades\Hindsight;
+use Fedoseev\Hindsight\Laravel\Jobs\RetainMemory;
 use Fedoseev\Hindsight\Laravel\Mcp\Tools\ReadPage;
 use Fedoseev\Hindsight\Laravel\Mcp\Tools\Recall;
 use Fedoseev\Hindsight\Laravel\Mcp\Tools\Reflect;
@@ -16,6 +17,7 @@ use Fedoseev\Hindsight\Laravel\Mcp\Tools\SearchPages;
 use Fedoseev\Hindsight\Tests\Laravel\Fixtures\MemoryServer;
 use Illuminate\Foundation\Auth\User;
 use Illuminate\Support\Facades\Exceptions;
+use Illuminate\Support\Facades\Queue;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Server\McpServiceProvider;
 use Laravel\Mcp\Server\Tool;
@@ -82,6 +84,20 @@ final class McpToolsTest extends TestCase
             'items' => [['content' => 'Alice moved to Berlin', 'context' => 'Alice said so in chat', 'tags' => ['user:42']]],
             'async' => true,
         ], $this->sentJson(0));
+    }
+
+    public function test_retain_queues_a_fact_for_the_user_who_called_the_tool(): void
+    {
+        Queue::fake();
+        config(['hindsight.queue.queue' => 'memory']);
+        $retain = $this->serve(Retain::bank(fn (Request $request): string => 'user-'.$request->user()->getAuthIdentifier())->queue());
+
+        MemoryServer::actingAs($this->user(7))->tool($retain, ['content' => 'Alice moved to Berlin'])
+            ->assertOk()
+            ->assertSee('Memory accepted for storage.');
+
+        $this->assertSame([], $this->http->requests);
+        Queue::assertPushedOn('memory', RetainMemory::class, fn (RetainMemory $job): bool => $job->bankId === 'user-7' && $job->content === 'Alice moved to Berlin');
     }
 
     public function test_reflect_returns_the_answer(): void

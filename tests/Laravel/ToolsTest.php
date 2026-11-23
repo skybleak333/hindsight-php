@@ -6,17 +6,26 @@ namespace Fedoseev\Hindsight\Tests\Laravel;
 
 use Fedoseev\Hindsight\Budget;
 use Fedoseev\Hindsight\Exceptions\NotFoundException;
+use Fedoseev\Hindsight\Exceptions\QueueDispatchException;
+use Fedoseev\Hindsight\Hindsight;
 use Fedoseev\Hindsight\Laravel\Ai\Tools\ReadPage;
 use Fedoseev\Hindsight\Laravel\Ai\Tools\Recall;
 use Fedoseev\Hindsight\Laravel\Ai\Tools\Reflect;
 use Fedoseev\Hindsight\Laravel\Ai\Tools\Retain;
 use Fedoseev\Hindsight\Laravel\Ai\Tools\SearchPages;
+use Fedoseev\Hindsight\Laravel\Facades\Hindsight as HindsightFacade;
+use Fedoseev\Hindsight\Laravel\Jobs\RetainMemory;
 use Fedoseev\Hindsight\Tests\Laravel\Fixtures\SupportAgent;
+use Illuminate\Contracts\Bus\Dispatcher;
 use Illuminate\JsonSchema\JsonSchemaTypeFactory;
 use Illuminate\Support\Facades\Exceptions;
+use Illuminate\Support\Facades\Queue;
 use Laravel\Ai\ObjectSchema;
 use Laravel\Ai\Responses\Data\ToolCall;
 use Laravel\Ai\Tools\Request;
+use LogicException;
+use PHPUnit\Framework\Attributes\DataProvider;
+use RuntimeException;
 
 final class ToolsTest extends TestCase
 {
@@ -58,6 +67,78 @@ final class ToolsTest extends TestCase
             'items' => [['content' => 'Alice moved to Berlin', 'context' => 'Alice said so in chat', 'tags' => ['user:42']]],
             'async' => true,
         ], $this->sentJson(0));
+    }
+
+    public function test_queued_retain_preserves_the_tool_configuration_and_skips_http_during_dispatch(): void
+    {
+        Queue::fake();
+        config(['hindsight.queue.connection' => 'sync', 'hindsight.queue.queue' => 'default-memory']);
+        $retain = Retain::bank('b')->tags(['user:42'])->timeout(4)->queue('database', 'agent-memory');
+
+        $output = $retain->handle(new Request(['content' => 'Alice moved to Berlin', 'context' => 'chat']));
+
+        $this->assertSame('Memory accepted for storage.', $output);
+        $this->assertSame([], $this->http->requests);
+        Queue::assertPushedOn('agent-memory', RetainMemory::class, function (RetainMemory $job): bool {
+            $this->assertSame('database', $job->connection);
+            $this->assertSame('b', $job->bankId);
+            $this->assertSame('Alice moved to Berlin', $job->content);
+            $this->assertSame('chat', $job->context);
+            $this->assertSame(['user:42'], $job->memoryTags);
+            $this->assertSame(4.0, $job->requestTimeout);
+
+            return true;
+        });
+    }
+
+    public function test_an_explicit_sync_queue_can_store_with_the_fake(): void
+    {
+        $fake = HindsightFacade::fake();
+
+        $output = Retain::bank('b')->queue('sync')->handle(new Request(['content' => 'Alice prefers email']));
+
+        $this->assertSame('Memory accepted for storage.', $output);
+        $fake->assertRetained('b', fn (string $content): bool => $content === 'Alice prefers email');
+    }
+
+    public function test_the_tool_reports_a_failed_dispatch_without_telling_the_model_it_stored_the_memory(): void
+    {
+        Exceptions::fake();
+        $cause = new RuntimeException('Queue connection refused');
+        $this->mock(Dispatcher::class)->shouldReceive('dispatch')->once()->andThrow($cause);
+
+        $output = Retain::bank('b')->queue()->handle(new Request(['content' => 'Alice prefers email']));
+
+        $this->assertSame('Memory is unavailable: The memory could not be queued.', $output);
+        Exceptions::assertReported(fn (QueueDispatchException $exception): bool => $exception->getPrevious() === $cause);
+    }
+
+    #[DataProvider('incompatibleQueueOptions')]
+    public function test_queue_rejects_incompatible_tool_options(bool $queueFirst, bool $customClient): void
+    {
+        $retain = Retain::bank('b');
+        $configure = $customClient
+            ? fn () => $retain->using($this->app->make(Hindsight::class))
+            : $retain->synchronously(...);
+
+        $this->expectException(LogicException::class);
+
+        if ($queueFirst) {
+            $retain->queue();
+            $configure();
+        } else {
+            $configure();
+            $retain->queue();
+        }
+    }
+
+    /** @return iterable<string, array{bool, bool}> */
+    public static function incompatibleQueueOptions(): iterable
+    {
+        yield 'queue then custom client' => [true, true];
+        yield 'custom client then queue' => [false, true];
+        yield 'queue then synchronous retain' => [true, false];
+        yield 'synchronous retain then queue' => [false, false];
     }
 
     public function test_reflect_returns_the_answer(): void

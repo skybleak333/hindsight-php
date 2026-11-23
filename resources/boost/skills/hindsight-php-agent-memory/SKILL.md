@@ -49,6 +49,7 @@ RetainMemory::dispatch("user-{$user->id}", 'Upgraded to the Pro plan.', tags: ['
 
 - `queue()` cannot be combined with `retainSynchronously()` or `using($client)`: the worker resolves the client from the container.
 - Retry policy, connection and queue live in `config/hindsight.php` under `queue` (`HINDSIGHT_QUEUE_CONNECTION`, `HINDSIGHT_QUEUE`, `HINDSIGHT_QUEUE_TRIES`).
+- Use `Retain::bank($bank)->queue()` on Laravel AI SDK or Laravel MCP tools to queue facts selected by the agent. The tool confirms acceptance for storage, and the worker sends the fact to Hindsight.
 
 ## Let the agent decide
 

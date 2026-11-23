@@ -75,7 +75,7 @@ trait ConfiguresMemoryTool
 
     protected function client(): Hindsight
     {
-        $client = $this->client ??= app(Hindsight::class);
+        $client = $this->client ?? app(Hindsight::class);
         $timeout = $this->timeout ?? $this->defaultTimeout();
 
         return $timeout === null ? $client : $client->withTimeout($timeout);

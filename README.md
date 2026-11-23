@@ -36,7 +36,7 @@ Monday: *"I'm on the Pro plan and I prefer short answers."* Friday, in a new con
   <img alt="The Memory middleware recalls relevant memories from a Hindsight bank before the model answers, adds them to the agent's instructions, and retains the exchange afterwards, directly or from a queued job." src="docs/how-it-works-light.svg">
 </picture>
 
-- **Memory that waits out an outage.** With `->queue()`, each exchange is stored by a queued job that retries while the Hindsight API is unavailable. Every attempt sends the same operation ID, so a retry never stores a memory twice.
+- **Memory that waits out an outage.** With `->queue()`, the middleware and the Laravel retain tools hand writes to a worker. The worker retries while Hindsight is unavailable and uses the same operation ID on every attempt to avoid duplicate writes.
 - **Memory for MCP clients.** The [tools for Laravel MCP servers](#memory-tools-for-mcp-servers) give Claude Desktop, Cursor and other MCP clients long-term memory, with a bank for each signed-in user.
 - **Tests without a server.** `Hindsight::fake()` replaces the client with an in-memory server and gives you `assertRetained()` and `assertRecalled()`. CI compares its tag filters, document handling and rejected requests with real Hindsight servers.
 
@@ -373,6 +373,8 @@ Each tool takes `tags()` (strict by default, like the middleware), `timeout()`, 
 
 The middleware and the tools work together. A common setup is the middleware for automatic memory plus `Retain` for facts the agent should keep on purpose.
 
+Use `Retain::bank($bank)->queue()` to save those facts through a Laravel worker. The tool reports that the fact was accepted for storage, and the worker delivers it to Hindsight. Use `->queue('redis', 'memory')` to override the connection and queue. A queued tool uses the Hindsight client from the container and cannot be combined with `using()` or `synchronously()`.
+
 ## Memory tools for MCP servers
 
 With [Laravel MCP](https://github.com/laravel/mcp), your app can be an MCP server for clients like Claude Desktop or Cursor. The same three tools exist for it, so the client gets long-term memory stored in your Hindsight:
@@ -410,6 +412,8 @@ Mcp::web('/mcp/assistant', AssistantServer::class)->middleware('auth:sanctum');
 With Hindsight 1.2.1 or later, two more tools let the client use the bank's [pages](#everything-else): `SearchPages` (`search_pages`) finds pages by a few words, and `ReadPage` (`read_page`) returns a page as markdown. A `ReadPage` limited with `tags()` does not return pages outside those tags, even when the client asks for one by id.
 
 `bank()` takes a bank ID or a closure that gets the MCP request. Everything else works as with the agent tools: `tags()`, `timeout()`, `using()`, `named()`, and `budget()` on `Recall` and `Reflect`. The tools validate their arguments, and tell the client that `recall_memory` and `reflect_memory` only read and that `retain_memory` is not destructive: it only adds memories.
+
+`Retain::bank($bank)->queue()` also works for MCP. It resolves the bank during the tool call and puts the resulting bank ID, tags and content on the job.
 
 The same tool objects work in [Prism](https://github.com/prism-php/prism), which accepts Laravel MCP tools (checked with Prism 0.103). The model then gets the same tools as an MCP client:
 
@@ -601,6 +605,7 @@ Every exception implements `Fedoseev\Hindsight\Exceptions\HindsightException`.
 | Exception | When |
 |---|---|
 | `ConfigurationException` | The URL is not an http(s) URL. Thrown when the client is created. |
+| `QueueDispatchException` | A Laravel retain tool could not enqueue a memory. The tool reports it and returns an error. |
 | `ConnectionException` | The server could not be reached or did not answer in time. |
 | `AuthenticationException` | 401 or 403: the API key is missing or wrong. |
 | `NotFoundException` | 404: the bank, document or other resource does not exist. |

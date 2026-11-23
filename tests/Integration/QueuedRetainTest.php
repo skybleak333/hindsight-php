@@ -5,8 +5,11 @@ declare(strict_types=1);
 namespace Fedoseev\Hindsight\Tests\Integration;
 
 use Fedoseev\Hindsight\Hindsight;
+use Fedoseev\Hindsight\Laravel\Ai\Tools\Retain;
 use Fedoseev\Hindsight\Laravel\HindsightServiceProvider;
 use Fedoseev\Hindsight\Laravel\Jobs\RetainMemory;
+use Illuminate\Support\Facades\Queue;
+use Laravel\Ai\Tools\Request;
 use Orchestra\Testbench\TestCase;
 
 /**
@@ -35,11 +38,16 @@ final class QueuedRetainTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_a_retried_job_stores_its_memory_once(): void
+    public function test_retrying_a_job_from_the_retain_tool_stores_its_memory_once(): void
     {
+        Queue::fake();
         $bank = $this->newBank();
-        $job = new RetainMemory($bank, 'Carol takes the 8:15 train to work.', tags: ['user:carol']);
+        $response = Retain::bank($bank)->tags(['user:carol'])->queue()->handle(new Request([
+            'content' => 'Carol takes the 8:15 train to work.',
+        ]));
 
+        $this->assertSame('Memory accepted for storage.', $response);
+        $job = Queue::pushed(RetainMemory::class)->sole();
         // The first attempt reaches the server; then the same job, after a trip through the queue, runs again.
         $job->handle();
         unserialize(serialize($job))->handle();

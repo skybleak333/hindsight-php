@@ -9,6 +9,7 @@ use Fedoseev\Hindsight\Exceptions\ConfigurationException;
 use Fedoseev\Hindsight\Exceptions\ConnectionException;
 use Fedoseev\Hindsight\Hindsight;
 use Fedoseev\Hindsight\Laravel\Ai\Memory;
+use Fedoseev\Hindsight\Laravel\Ai\Tools\Retain;
 use Fedoseev\Hindsight\Laravel\Facades\Hindsight as HindsightFacade;
 use Fedoseev\Hindsight\Laravel\Jobs\RetainMemory;
 use Fedoseev\Hindsight\Testing\FakeServer;
@@ -21,6 +22,7 @@ use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
+use Laravel\Ai\Tools\Request;
 use LogicException;
 use Psr\Http\Client\ClientInterface;
 use Psr\Http\Message\RequestInterface;
@@ -68,7 +70,7 @@ final class QueuedRetainTest extends TestCase
         $this->assertSame(0, DB::table('failed_jobs')->count());
     }
 
-    public function test_a_retry_after_a_lost_answer_does_not_store_the_memory_twice(): void
+    public function test_a_queued_tool_write_retries_after_a_lost_answer_and_stores_the_memory_once(): void
     {
         // The server stores the memory, then the connection drops before the answer arrives.
         $server = new FakeServer;
@@ -76,7 +78,10 @@ final class QueuedRetainTest extends TestCase
         $this->app->instance(Hindsight::class, new Hindsight('http://hindsight.test', httpClient: $client));
         Exceptions::fake();
 
-        RetainMemory::dispatch('user-1', 'Lives in Rotterdam.');
+        $response = Retain::bank('user-1')->queue()->handle(new Request(['content' => 'Lives in Rotterdam.']));
+
+        $this->assertSame('Memory accepted for storage.', $response);
+        $this->assertSame([], $client->operationIds, 'The tool returned before calling Hindsight.');
 
         $this->work();
         $this->assertSame(1, (int) DB::table('jobs')->sole()->attempts, 'The worker saw a failure and released the job.');
