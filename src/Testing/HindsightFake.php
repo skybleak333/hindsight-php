@@ -14,7 +14,8 @@ use PHPUnit\Framework\Assert as PHPUnit;
  *     $hindsight = Hindsight::fake(['user-1' => ['Alice is on the Pro plan']]);   // in Laravel, via the facade
  *     $hindsight = new HindsightFake(['user-1' => ['Alice is on the Pro plan']]); // anywhere else
  *
- * Recall finds the memories you seed and everything retained during the test. The fake follows the server's
+ * Recall and listMemories find the memories you seed and everything retained during the test. deleteBank removes
+ * that bank's memories and operations. The fake follows the server's
  * rules where they decide what a test sees: a bank nobody wrote to answers 404, tag filters work like
  * Hindsight's, a retain with a document_id replaces that document, and an async retain repeated with the same
  * operation_id stores nothing. These retains are rejected with the server's status: 422 for an operation_id that

@@ -123,6 +123,40 @@ final class FakeMatchesServerTest extends TestCase
         $this->assertSame($details['server'], $details['fake']);
     }
 
+    public function test_paging_and_deleting_a_bank_matches_the_server(): void
+    {
+        foreach (['server' => $this->hindsight, 'fake' => new HindsightFake] as $name => $client) {
+            $bank = $this->newBank();
+            $other = $this->newBank();
+
+            $client->retain($bank, 'Garden note: rosemary', timestamp: '2026-01-01', context: 'winter garden', documentId: 'rosemary', tags: ['home', 'private']);
+            $client->retain($bank, 'Garden note: lavender', timestamp: '2026-01-02', context: 'winter garden', documentId: 'lavender', tags: ['home', 'private']);
+            $client->retain($bank, 'Garden note: basil', timestamp: '2026-01-03', context: 'winter garden', documentId: 'basil', tags: ['home']);
+            $client->retain($other, 'Garden note: thyme');
+
+            $page = $client->listMemories($bank, search: 'WINTER GARDEN', tags: ['home', 'private'], limit: 1, offset: 1, query: [
+                'tags_match' => TagsMatch::AllStrict,
+            ]);
+            $this->assertSame(2, $page['total'], $name);
+            $this->assertSame(['Garden note: rosemary'], array_column($page['items'], 'text'), $name);
+            $this->assertSame(['world'], array_column($page['items'], 'fact_type'), $name);
+            $this->assertSame(1, $client->listMemories($bank, query: ['document_id' => 'lavender'])['total'], $name);
+
+            $this->assertTrue($client->deleteBank($bank)['success'], $name);
+            $this->assertSame(0, $client->deleteBank($bank)['deleted_count'], $name);
+            $this->assertSame(1, $client->listMemories($other)['total'], $name);
+
+            foreach ([fn () => $client->listMemories($bank), fn () => $client->recall($bank, 'garden')] as $read) {
+                try {
+                    $read();
+                    $this->fail("{$name}: expected a 404 after deleting the bank.");
+                } catch (NotFoundException $exception) {
+                    $this->assertTrue($exception->isMissingBank($bank), $name);
+                }
+            }
+        }
+    }
+
     /**
      * @param  list<string>|null  $tags
      * @return list<string>

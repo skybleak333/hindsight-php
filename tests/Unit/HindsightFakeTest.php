@@ -220,6 +220,59 @@ final class HindsightFakeTest extends TestCase
         $this->assertSame('b: Who is Alice?', $fake->reflect('b', 'Who is Alice?')->text);
     }
 
+    public function test_listing_applies_filters_before_pagination(): void
+    {
+        $fake = new HindsightFake(['support' => [
+            ['text' => 'Old note', 'context' => 'CafÉ', 'type' => 'experience', 'tags' => ['A', 'B'], 'document_id' => 'notes'],
+            ['text' => 'New café note', 'type' => 'experience', 'tags' => ['A', 'B'], 'document_id' => 'notes'],
+            ['text' => 'One matching tag', 'context' => 'Café', 'type' => 'experience', 'tags' => ['A'], 'document_id' => 'notes'],
+            ['text' => 'Another document', 'context' => 'Café', 'type' => 'experience', 'tags' => ['A', 'B'], 'document_id' => 'other'],
+            ['text' => 'Another type', 'context' => 'Café', 'type' => 'world', 'tags' => ['A', 'B'], 'document_id' => 'notes'],
+        ]]);
+
+        $page = $fake->listMemories('support', type: 'experience', search: 'café', tags: ['A', 'B'], limit: 1, offset: 1, query: [
+            'document_id' => 'notes',
+            'tags_match' => TagsMatch::AllStrict,
+        ]);
+
+        $this->assertSame(2, $page['total']);
+        $this->assertSame(1, $page['limit']);
+        $this->assertSame(1, $page['offset']);
+        $this->assertSame(['Old note'], array_column($page['items'], 'text'));
+        $this->assertSame(['experience'], array_column($page['items'], 'fact_type'));
+        $this->assertSame(['notes'], array_column($page['items'], 'document_id'));
+
+        $emptyPage = $fake->listMemories('support', limit: 0);
+        $this->assertSame(['items' => [], 'total' => 5, 'limit' => 0, 'offset' => 0], $emptyPage);
+    }
+
+    public function test_deleting_one_bank_drops_its_memories_and_operations(): void
+    {
+        $fake = new HindsightFake(['other' => ['Keep this memory']]);
+        $retained = $fake->retain('support', 'Alice wants email.', documentId: 'profile', async: true);
+        $fake->retain('support', 'Alice moved to Valencia.', documentId: 'profile', updateMode: 'append');
+
+        $this->assertSame(3, $fake->deleteBank('support')['deleted_count']);
+        $this->assertSame(0, $fake->deleteBank('support')['deleted_count']);
+        $this->assertNotNull($retained->operationId);
+        $this->assertSame(OperationStatus::NotFound, $fake->getOperation('support', $retained->operationId)->status);
+        $this->assertThrows(NotFoundException::class, fn () => $fake->listMemories('support'));
+        $this->assertThrows(NotFoundException::class, fn () => $fake->recall('support', 'Alice'));
+        $fake->assertRetained('support', 2);
+        $this->assertSame(['Keep this memory'], $fake->recall('other', 'memory')->texts());
+
+        $fake->retain('support', 'New account.');
+        $this->assertSame(['New account.'], $fake->recall('support', 'account')->texts());
+    }
+
+    public function test_listing_rejects_negative_pagination(): void
+    {
+        $fake = new HindsightFake(['support' => []]);
+
+        $this->expectException(ValidationException::class);
+        $fake->listMemories('support', offset: -1);
+    }
+
     public function test_it_refuses_endpoints_it_does_not_simulate_unless_stubbed(): void
     {
         $fake = new HindsightFake;
@@ -228,8 +281,8 @@ final class HindsightFakeTest extends TestCase
         $this->assertSame(['bank_id' => 'stubbed'], $fake->getBankStats('support'));
 
         $this->expectException(LogicException::class);
-        $this->expectExceptionMessage('HindsightFake does not simulate DELETE /v1/default/banks/support');
-        $fake->deleteBank('support');
+        $this->expectExceptionMessage('HindsightFake does not simulate GET /v1/default/banks/support/memories/fact-1');
+        $fake->getMemory('support', 'fact-1');
     }
 
     public function test_it_can_be_unavailable(): void
@@ -302,6 +355,8 @@ final class HindsightFakeTest extends TestCase
         $client->reflect('b', 'Summarise', includeFacts: true);
         $client->getOperation('b', (string) $async->operationId);
         $client->getOperation('b', '0b6e2c6e-0000-4000-8000-000000000000');
+        $client->listMemories('b', tags: ['user:1'], limit: 2);
+        $client->deleteBank('b');
 
         $this->assertSame(['Prefers email.', 'In blocks.', 'Async.', 'One.', 'Two.'], $recall->texts());
     }

@@ -38,7 +38,7 @@ Monday: *"I'm on the Pro plan and I prefer short answers."* Friday, in a new con
 
 - **Memory that waits out an outage.** With `->queue()`, the middleware and the Laravel retain tools hand writes to a worker. The worker retries while Hindsight is unavailable and uses the same operation ID on every attempt to avoid duplicate writes.
 - **Memory for MCP clients.** The [tools for Laravel MCP servers](#memory-tools-for-mcp-servers) give Claude Desktop, Cursor and other MCP clients long-term memory, with a bank for each signed-in user.
-- **Tests without a server.** `Hindsight::fake()` replaces the client with an in-memory server and gives you `assertRetained()` and `assertRecalled()`. CI compares its tag filters, document handling and rejected requests with real Hindsight servers.
+- **Tests without a server.** `Hindsight::fake()` replaces the client with an in-memory server. Use it to test agent recalls, browse stored facts and verify that deleting one user's memory bank leaves the others intact.
 
 **Why not `RemembersConversations`?** The Laravel AI SDK's own conversation memory replays the latest messages of one conversation, up to 100 by default (`maxConversationMessages()` in laravel/ai 1.3). A new conversation starts empty, and a long one loses its beginning. Hindsight keeps facts across conversations and recalls only the ones relevant to the current message. The two work together: `RemembersConversations` for the thread, `Memory` for what the agent should know about the user.
 
@@ -652,6 +652,8 @@ The middleware, the tools and the `RetainMemory` job get the client from the con
 | `retained($bank)`, `recalls($bank)` | What was stored and searched, to inspect it yourself. |
 | `remember($bank, ...$memories)` | Seed more memories. A memory is its text, or an array such as `['text' => '…', 'tags' => ['user:1'], 'type' => 'experience']`. |
 | `reflectUsing($answer)` | What reflect answers: a string, or a closure that gets the query and the bank. |
+| `listMemories($bank, ...)` | Browse stored facts, newest inserted first. Supports limit, offset, type, substring search over text and context, document ID, and tag matching. |
+| `deleteBank($bank)` | Drop that bank's facts, documents and operations. Repeating the call reports zero deleted items. |
 | `unavailable($times, $status)`, `available()` | Make requests fail as if Hindsight were down: a refused connection, or `$status` such as `503`. Without `$times`, until `available()`. |
 | `respondTo($method, $path, $response)` | Answer an endpoint the fake does not simulate. `*` matches one path segment. |
 
@@ -660,10 +662,13 @@ The fake follows the server where a test depends on it:
 - A bank nobody wrote to answers `404` with the server's message, so you test the first conversation of a new user as it will happen.
 - Tag filters (`any`, `all`, `any_strict`, `all_strict`, `exact`) select the same memories as on the server.
 - A retain with a `document_id` replaces that document unless it appends.
+- Listing applies filters before counting and paging. The fake counts stored facts and their documents when a bank is deleted. Retain and recall assertions still see the request history.
 - An async retain repeated with the same operation ID stores nothing new, and an operation ID used in another bank answers `409`.
 - These retains are rejected with the server's status: `422` for an operation ID that is not a UUID, a timestamp that is not ISO 8601 (or `unset`), a tag or metadata value that is not a string, or an unknown `update_mode`, and `400` for an append without a `document_id`. Other invalid fields are not checked.
 
 It is simpler than the server on purpose: a stored item becomes one memory with its text as sent (no fact extraction), recall returns every memory that passes the filters in the order they were stored (no ranking, no token budget), and async work is finished at once. An endpoint the fake does not simulate throws a `LogicException` instead of answering something made up.
+
+For a test that depends on list ordering by timestamp, a time window, linked entities or curation state, stub the list response with `respondTo()`.
 
 To check a single HTTP call yourself, bind any PSR-18 client as `hindsight.http` before the client is first used, for example Guzzle's `MockHandler`.
 
@@ -671,7 +676,7 @@ To check a single HTTP call yourself, bind any PSR-18 client as `hindsight.http`
 
 - **Every request in the unit tests is checked against Hindsight's own [OpenAPI document](tests/Fixtures/openapi-1.1.0.json)**, downloaded from the `v1.1.0` tag. Operations that came later, such as pages, are checked against the [1.2.1 document](tests/Fixtures/openapi-1.2.1.json). The check is stricter than the server: Hindsight answers `200` for unknown fields, so a misspelled field name in the client would never fail a request. The tests reject it. Response fixtures are checked against the same document.
 - **CI starts real Hindsight 1.1.0, 1.2.0, 1.2.1 and 1.2.3 servers** (`hindsight-api-slim` with local ONNX embeddings and no LLM) and runs the integration suite against them, including a Laravel AI agent and a Symfony AI agent that each remember a fact from one conversation in the next.
-- **The fake is checked against the same OpenAPI document and against real servers.** A unit test sends a call to every endpoint the fake simulates and validates each request and successful answer against the schema. The integration suite runs the same tag filters, document replacement, missing bank, rejected retains and accepted timestamps on the fake and on real Hindsight 1.1.0, 1.2.0 and 1.2.1, and compares the results. The fake must answer exactly what the document describes; a real server may add fields, as 1.2.1 did with `paused_mental_models` in the bank stats.
+- **The fake is checked against the same OpenAPI document and against real servers.** A unit test validates the request and response for each endpoint the fake simulates. The integration suite compares tag filters, document replacement, missing banks, pagination, bank deletion, rejected retains and accepted timestamps with the real servers.
 - **Queued retains run through Laravel's `queue:work --once` command** on the database queue driver, inside the test process with time travel: a job released while Hindsight answers `503` is stored once it is back, a retry after a lost answer sends the same operation ID, only the last failed attempt is reported, and a `401` fails the job without retries. Against a real server, a job run twice is one operation and one memory, while the same async retain sent twice without an operation ID stores two copies.
 - PHPStan at level 9. The client reads response fields without trusting their types, so an unexpected value from the server becomes `null` instead of a `TypeError`.
 

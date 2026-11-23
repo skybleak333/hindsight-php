@@ -7,6 +7,7 @@ namespace Fedoseev\Hindsight\Testing;
 use Closure;
 use Fedoseev\Hindsight\TagsMatch;
 use GuzzleHttp\Exception\ConnectException;
+use GuzzleHttp\Psr7\Query;
 use GuzzleHttp\Psr7\Response;
 use LogicException;
 use Psr\Http\Client\ClientInterface;
@@ -16,7 +17,7 @@ use Psr\Http\Message\ResponseInterface;
 /**
  * An in-memory stand-in for the Hindsight API, behind HindsightFake.
  *
- * It answers retain, recall, reflect, operation status, health and version the way Hindsight 1.1 and 1.2 do,
+ * It answers retain, recall, list memories, delete bank, reflect, operation status, health and version,
  * with three simplifications: a retained item is stored as one memory with its text unchanged (no fact
  * extraction), recall returns every memory of the bank that passes the type and tag filters (no ranking, no
  * token budget), and async work is finished at once.
@@ -25,7 +26,7 @@ use Psr\Http\Message\ResponseInterface;
  */
 final class FakeServer implements ClientInterface
 {
-    private const BANK_PATH = '#^/v1/default/banks/([^/]+)/(memories/recall|memories|reflect|operations/([^/]+))$#';
+    private const BANK_PATH = '#^/v1/default/banks/([^/]+)(?:/(memories/recall|memories/list|memories|reflect|operations/([^/]+)))?$#';
 
     /** @var array<string, list<array<string, mixed>>> Memories by bank, as recall returns them. */
     private array $memories = [];
@@ -154,11 +155,14 @@ final class FakeServer implements ClientInterface
 
         if (preg_match(self::BANK_PATH, $path, $match) === 1) {
             $bankId = rawurldecode($match[1]);
+            $endpoint = $match[2] ?? '';
 
             $response = match (true) {
-                $method === 'POST' && $match[2] === 'memories' => $this->retain($bankId, $body),
-                $method === 'POST' && $match[2] === 'memories/recall' => $this->recall($bankId, $body),
-                $method === 'POST' && $match[2] === 'reflect' => $this->reflect($bankId, $body),
+                $method === 'POST' && $endpoint === 'memories' => $this->retain($bankId, $body),
+                $method === 'POST' && $endpoint === 'memories/recall' => $this->recall($bankId, $body),
+                $method === 'GET' && $endpoint === 'memories/list' => $this->listMemories($bankId, Query::parse($request->getUri()->getQuery())),
+                $method === 'DELETE' && $endpoint === '' => $this->deleteBank($bankId),
+                $method === 'POST' && $endpoint === 'reflect' => $this->reflect($bankId, $body),
                 $method === 'GET' && isset($match[3]) => $this->operation($bankId, rawurldecode($match[3])),
                 default => null,
             };
@@ -169,8 +173,7 @@ final class FakeServer implements ClientInterface
         }
 
         throw new LogicException(
-            "HindsightFake does not simulate {$method} {$path}. It answers retain, recall, reflect, operation status, "
-            .'health and version. Stub other endpoints with respondTo().',
+            "HindsightFake does not simulate {$method} {$path}. Stub other endpoints with respondTo().",
         );
     }
 
@@ -221,7 +224,7 @@ final class FakeServer implements ClientInterface
                 'text' => self::text($item['content'] ?? ''),
                 'type' => 'world',
                 'context' => $item['context'] ?? null,
-                'document_id' => $documentId,
+                'document_id' => $documentId ?? self::uuid(),
                 'tags' => $item['tags'] ?? null,
                 // An empty map would encode as [] instead of {}.
                 'metadata' => is_array($item['metadata'] ?? null) && $item['metadata'] !== [] ? (object) $item['metadata'] : null,
@@ -360,6 +363,77 @@ final class FakeServer implements ClientInterface
         ));
 
         return self::json(['results' => $results]);
+    }
+
+    /** @param array<string, mixed> $query */
+    private function listMemories(string $bankId, array $query): ResponseInterface
+    {
+        $this->record('listMemories', $bankId, $query);
+
+        if (! isset($this->memories[$bankId])) {
+            return self::json(['detail' => "Bank '{$bankId}' not found"], 404);
+        }
+
+        $unsupported = array_diff(array_keys($query), ['type', 'q', 'document_id', 'tags', 'tags_match', 'limit', 'offset']);
+        if ($unsupported !== []) {
+            throw new LogicException('HindsightFake does not support these listMemories filters: '.implode(', ', $unsupported).'. Stub the response with respondTo().');
+        }
+
+        $page = [];
+        foreach (['limit' => 100, 'offset' => 0] as $field => $default) {
+            $value = $query[$field] ?? $default;
+            $number = filter_var($value, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
+            if ($number === false) {
+                return self::json(['detail' => [self::error(['query', $field], 'value_error', 'Expected a non-negative integer', $value)]], 422);
+            }
+
+            $page[$field] = $number;
+        }
+
+        $type = $query['type'] ?? null;
+        $document = $query['document_id'] ?? null;
+        $tags = self::strings((array) ($query['tags'] ?? []));
+        $match = is_string($query['tags_match'] ?? null) ? $query['tags_match'] : 'any';
+        $search = is_string($query['q'] ?? null) ? '/'.preg_quote($query['q'], '/').'/iu' : null;
+
+        $matches = array_filter(
+            array_reverse($this->memories[$bankId]),
+            static fn (array $memory): bool => ($type === null || $type === ($memory['type'] ?? null))
+                && ($document === null || $document === ($memory['document_id'] ?? null))
+                && self::tagsMatch(self::strings($memory['tags'] ?? null), $tags, $match)
+                && ($search === null
+                    || (is_string($memory['text'] ?? null) && preg_match($search, $memory['text']) === 1)
+                    || (is_string($memory['context'] ?? null) && preg_match($search, $memory['context']) === 1)),
+        );
+
+        $items = array_map(static fn (array $memory): array => [
+            'id' => $memory['id'],
+            'text' => $memory['text'],
+            'context' => $memory['context'] ?? '',
+            'fact_type' => $memory['type'],
+            'document_id' => $memory['document_id'] ?? null,
+            'tags' => $memory['tags'] ?? [],
+            'metadata' => (object) ($memory['metadata'] ?? []),
+        ], array_slice($matches, $page['offset'], $page['limit']));
+
+        return self::json(['items' => $items, 'total' => count($matches), ...$page]);
+    }
+
+    private function deleteBank(string $bankId): ResponseInterface
+    {
+        $this->record('deleteBank', $bankId, []);
+
+        $memories = $this->memories[$bankId] ?? [];
+        $documents = array_unique(self::strings(array_column($memories, 'document_id')));
+        unset($this->memories[$bankId]);
+
+        $this->operations = array_filter($this->operations, static fn (array $operation): bool => $operation['bank'] !== $bankId);
+
+        return self::json([
+            'success' => true,
+            'message' => "Bank '{$bankId}' and all associated data deleted successfully",
+            'deleted_count' => count($memories) + count($documents),
+        ]);
     }
 
     /**
