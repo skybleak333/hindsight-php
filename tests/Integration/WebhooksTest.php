@@ -37,6 +37,8 @@ final class WebhooksTest extends TestCase
             $retain = $this->hindsight->retain($bank, 'Alice prefers email support.', documentId: 'customer-note', async: true);
             $this->assertNotNull($retain->operationId);
             $delivery = $this->waitForDelivery($bank, $id);
+            $this->assertTrue($this->hindsight->waitForOperation($bank, $retain->operationId, timeout: 10)->isCompleted());
+            $this->assertSame('customer-note', $this->hindsight->getDocument($bank, 'customer-note')['id']);
             $this->assertSame(2, $delivery['attempts']);
             $this->assertSame(204, $delivery['last_response_status']);
 
@@ -46,6 +48,7 @@ final class WebhooksTest extends TestCase
             $deliveries = array_map(static fn (string $line): array => json_decode($line, true, flags: JSON_THROW_ON_ERROR), $lines);
             $this->assertNotSame($deliveries[0]['signature'], $deliveries[1]['signature']);
 
+            $events = [];
             foreach ($deliveries as $received) {
                 $body = base64_decode($received['body'], true);
                 $this->assertIsString($body);
@@ -55,9 +58,11 @@ final class WebhooksTest extends TestCase
                 $this->assertSame($delivery['id'], $received['delivery_id']);
                 $this->assertSame('retain.completed', $event->type);
                 $this->assertSame($bank, $event->bankId);
-                $this->assertSame($retain->operationId, $event->operationId);
+                $this->assertSame('completed', $event->status);
                 $this->assertSame('customer-note', $event->data['document_id']);
+                $events[] = $event;
             }
+            $this->assertEquals($events[0], $events[1]);
 
             $this->assertTrue($this->hindsight->deleteWebhook($bank, $id)['success']);
             $this->assertSame([], $this->hindsight->listWebhooks($bank)['items']);

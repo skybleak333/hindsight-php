@@ -275,7 +275,9 @@ use Fedoseev\Hindsight\WebhookEvent;
 $event = WebhookEvent::verify($rawBody, $signatureV2, $secret);
 ```
 
-Use the verified `$event->eventId` as the unique key in your handler. Hindsight retries deliveries with the same event ID and a fresh signature. A single `$event->operationId` can cover several documents in a batch, each with its own event ID. [Delivery and retry behavior](https://hindsight.vectorize.io/developer/api/webhooks#delivery-and-retries)
+Use the verified `$event->eventId` as the unique key in your handler. Hindsight retries deliveries with the same event ID and a fresh signature. [Delivery and retry behavior](https://hindsight.vectorize.io/developer/api/webhooks#delivery-and-retries)
+
+To identify the retained document, supply `documentId` when calling `retain()` and use the signed `$event->bankId` and `$event->data['document_id']` in your handler. The SDK exposes `$event->operationId` as sent by Hindsight. Our integration checks on Hindsight 1.1.0, 1.2.0, 1.2.1 and 1.2.3 observed different operation IDs in the webhook and the async retain response. Use the ID from the retain response to query `getOperation()`. [Integration run](https://github.com/skybleak333/hindsight-php/actions/runs/45195820787)
 
 ## Laravel
 
