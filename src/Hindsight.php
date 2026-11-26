@@ -39,6 +39,8 @@ class Hindsight
 {
     public const VERSION = '0.3.0';
 
+    private const KNOWLEDGE_BANKS_PATH = '/v1/default/knowledge-banks';
+
     private readonly Transport $transport;
 
     /** Set when the client built its own Guzzle client, so withTimeout() can build another. */
@@ -471,6 +473,118 @@ class Hindsight
         return $this->transport->json('DELETE', Transport::path('/v1/default/banks/%s/documents/%s', $bankId, $documentId));
     }
 
+    // Knowledge banks (Hindsight 1.3+)
+
+    /** @return array<string, mixed> */
+    public function createKnowledgeBank(string $bankId): array
+    {
+        return $this->transport->json('POST', self::KNOWLEDGE_BANKS_PATH, ['bank_id' => $bankId]);
+    }
+
+    /** @return array<string, mixed> */
+    public function listKnowledgeBanks(?string $search = null, ?int $limit = null, ?int $offset = null): array
+    {
+        return $this->transport->json('GET', self::KNOWLEDGE_BANKS_PATH, query: ['q' => $search, 'limit' => $limit, 'offset' => $offset]);
+    }
+
+    /** @return array<string, mixed> */
+    public function getKnowledgeBank(string $bankId): array
+    {
+        return $this->transport->json('GET', Transport::path(self::KNOWLEDGE_BANKS_PATH.'/%s', $bankId));
+    }
+
+    /** @return array<string, mixed> */
+    public function deleteKnowledgeBank(string $bankId): array
+    {
+        return $this->transport->json('DELETE', Transport::path(self::KNOWLEDGE_BANKS_PATH.'/%s', $bankId));
+    }
+
+    /**
+     * Index Markdown text. A stable document_id replaces the earlier revision of that document.
+     *
+     * @param  list<array{text: string, document_id?: string|null, filename?: string|null, tags?: list<string>, strategy?: string|null}>  $items
+     * @return array<string, mixed> Contains document_ids, operation_ids and unchanged_document_ids.
+     */
+    public function ingestKnowledgeTexts(string $bankId, array $items, bool $async = false): array
+    {
+        return $this->transport->json('POST', Transport::path(self::KNOWLEDGE_BANKS_PATH.'/%s/ingest', $bankId), [
+            'items' => $items,
+            'async' => $async,
+        ]);
+    }
+
+    /**
+     * Search the passages of source documents.
+     *
+     * @param  list<string>|null  $tags
+     * @param  list<string>|null  $documentIds
+     * @param  array<string, mixed>  $options  Other search parameters, such as trace or enable_reranking.
+     * @return array<string, mixed>
+     */
+    public function searchKnowledgeBank(
+        string $bankId,
+        ?string $query = null,
+        ?int $maxTokens = null,
+        ?array $tags = null,
+        TagsMatch|string $tagsMatch = TagsMatch::Any,
+        ?array $documentIds = null,
+        array $options = [],
+    ): array {
+        return $this->transport->json('POST', Transport::path(self::KNOWLEDGE_BANKS_PATH.'/%s/search', $bankId), [
+            ...self::withoutNulls([
+                'query' => $query, 'max_tokens' => $maxTokens, 'tags' => $tags,
+                'tags_match' => self::tagsMatch($tagsMatch), 'document_ids' => $documentIds,
+            ]),
+            ...$options,
+        ]);
+    }
+
+    /**
+     * @param  list<string>|null  $tags
+     * @return array<string, mixed>
+     */
+    public function listKnowledgeDocuments(
+        string $bankId,
+        ?string $search = null,
+        ?string $status = null,
+        ?string $mediaType = null,
+        ?array $tags = null,
+        ?int $limit = null,
+        ?int $offset = null,
+    ): array {
+        return $this->transport->json('GET', Transport::path(self::KNOWLEDGE_BANKS_PATH.'/%s/documents', $bankId), query: [
+            'q' => $search, 'status' => $status, 'media_type' => $mediaType, 'tags' => $tags, 'limit' => $limit, 'offset' => $offset,
+        ]);
+    }
+
+    /** @return array<string, mixed> */
+    public function getKnowledgeDocument(string $bankId, string $documentId): array
+    {
+        return $this->transport->json('GET', Transport::path(self::KNOWLEDGE_BANKS_PATH.'/%s/documents/%s', $bankId, $documentId));
+    }
+
+    /** @return array<string, mixed> */
+    public function deleteKnowledgeDocument(string $bankId, string $documentId): array
+    {
+        return $this->transport->json('DELETE', Transport::path(self::KNOWLEDGE_BANKS_PATH.'/%s/documents/%s', $bankId, $documentId));
+    }
+
+    public function getKnowledgeBankOperation(string $bankId, string $operationId): Operation
+    {
+        return Operation::fromArray($this->transport->json('GET', Transport::path(self::KNOWLEDGE_BANKS_PATH.'/%s/operations/%s', $bankId, $operationId)));
+    }
+
+    /**
+     * Wait for an async knowledge ingest to complete.
+     *
+     * @throws OperationFailedException when it fails, is cancelled or is unknown to the server.
+     * @throws TimeoutException when it is still running after $timeout seconds.
+     */
+    public function waitForKnowledgeBankOperation(string $bankId, string $operationId, float $timeout = 60.0, float $interval = 0.5): Operation
+    {
+        return self::pollOperation(fn (): Operation => $this->getKnowledgeBankOperation($bankId, $operationId), $timeout, $interval);
+    }
+
     // Directives
 
     /**
@@ -751,10 +865,16 @@ class Hindsight
      */
     public function waitForOperation(string $bankId, string $operationId, float $timeout = 60.0, float $interval = 0.5): Operation
     {
+        return self::pollOperation(fn (): Operation => $this->getOperation($bankId, $operationId), $timeout, $interval);
+    }
+
+    /** @param Closure(): Operation $fetch */
+    private static function pollOperation(Closure $fetch, float $timeout, float $interval): Operation
+    {
         $deadline = microtime(true) + $timeout;
 
         while (true) {
-            $operation = $this->getOperation($bankId, $operationId);
+            $operation = $fetch();
 
             if ($operation->status === OperationStatus::Completed) {
                 return $operation;

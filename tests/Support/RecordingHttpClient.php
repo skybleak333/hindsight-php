@@ -19,15 +19,23 @@ final class RecordingHttpClient implements ClientInterface
     /** @var list<string> */
     private array $bodies = [];
 
+    private ?RequestInterface $lastRequest = null;
+
     public function __construct(private readonly ClientInterface $client) {}
 
     public function sendRequest(RequestInterface $request): ResponseInterface
     {
         $response = $this->client->sendRequest($request);
+        $this->lastRequest = $request;
         $this->bodies[] = (string) $response->getBody();
         $response->getBody()->rewind();
 
         return $response;
+    }
+
+    public function lastRequest(): RequestInterface
+    {
+        return $this->lastRequest ?? throw new RuntimeException('No requests were recorded.');
     }
 
     /**

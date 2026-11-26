@@ -49,6 +49,7 @@ This is a community package. It is not affiliated with Vectorize, the company be
 - [Installation](#installation)
 - [Run a Hindsight server](#run-a-hindsight-server)
 - [The client](#the-client)
+- [Knowledge banks](#knowledge-banks)
 - [Webhooks](#webhooks)
 - [Laravel](#laravel)
 - [Memory for Laravel AI SDK agents](#memory-for-laravel-ai-sdk-agents)
@@ -191,6 +192,7 @@ $answer->structuredOutput; // ['city' => 'Rotterdam']
 | Bank aliases | `listBankAliases`, `addBankAlias`, `setPrimaryBankAlias`, `removeBankAlias` |
 | Memories | `listMemories`, `getMemory`, `clearMemories` |
 | Documents | `listDocuments`, `getDocument`, `deleteDocument` |
+| Knowledge banks (Hindsight 1.3+) | `createKnowledgeBank`, `listKnowledgeBanks`, `getKnowledgeBank`, `deleteKnowledgeBank`, `ingestKnowledgeTexts`, `searchKnowledgeBank`, `listKnowledgeDocuments`, `getKnowledgeDocument`, `deleteKnowledgeDocument`, `getKnowledgeBankOperation`, `waitForKnowledgeBankOperation` |
 | Directives | `createDirective`, `listDirectives`, `getDirective`, `updateDirective`, `deleteDirective` |
 | Mental models | `createMentalModel`, `listMentalModels`, `getMentalModel`, `updateMentalModel`, `deleteMentalModel`, `refreshMentalModel` |
 | Pages (Hindsight 1.2.1+) | `getPageTree`, `createPage`, `createPageFolder`, `getPage`, `searchPages`, `exportPages`, `updatePageNode`, `deletePageNode` |
@@ -251,6 +253,40 @@ $hindsight->recall('support', 'plan', options: ['max_token' => 500]);
 ```
 
 In Laravel the warning goes to your default log channel without any setup.
+
+## Knowledge banks
+
+Hindsight 1.3 adds knowledge banks for policies, manuals and other source documents. Index Markdown directly and retrieve matching passages with their document IDs, filenames and positions. The server indexes this text for search without extracting memories from it. [Hindsight Knowledge Banks](https://hindsight.vectorize.io/developer/api/knowledge-banks)
+
+```php
+use Fedoseev\Hindsight\TagsMatch;
+
+$hindsight->createKnowledgeBank('product-manuals');
+$hindsight->ingestKnowledgeTexts('product-manuals', [[
+    'document_id' => 'atlas-returns',
+    'text' => 'Atlas kettles can be returned within fourteen days of delivery.',
+    'tags' => ['approved'],
+]]);
+
+$found = $hindsight->searchKnowledgeBank(
+    'product-manuals',
+    'How many days do I have to return an Atlas kettle?',
+    tags: ['approved'],
+    tagsMatch: TagsMatch::AllStrict,
+);
+
+foreach ($found['results'] as $hit) {
+    echo $hit['document_id'].' · '.$hit['index'].' · '.$hit['text'].PHP_EOL;
+}
+```
+
+Text ingest runs synchronously by default. Pass `async: true` to queue the ingest, and use `waitForKnowledgeBankOperation()` with each distinct ID from `operation_ids`. Reuse a `document_id` to replace that source's text. Search can also filter by `documentIds` if the agent is working from a selected set of sources.
+
+From a checkout with Composer dependencies installed, run [the complete example](examples/knowledge-bank.php) against a Hindsight 1.3 server at `http://127.0.0.1:8888` or set `HINDSIGHT_URL`. The example creates a temporary bank, prints the matched source and deletes the bank.
+
+```sh
+php examples/knowledge-bank.php
+```
 
 ## Webhooks
 
@@ -716,8 +752,8 @@ To check a single HTTP call yourself, bind any PSR-18 client as `hindsight.http`
 
 ## How this package is tested
 
-- **Every request in the unit tests is checked against Hindsight's own [OpenAPI document](tests/Fixtures/openapi-1.1.0.json)**, downloaded from the `v1.1.0` tag. Operations that came later, such as pages, are checked against the [1.2.1 document](tests/Fixtures/openapi-1.2.1.json). The check is stricter than the server: Hindsight answers `200` for unknown fields, so a misspelled field name in the client would never fail a request. The tests reject it. Response fixtures are checked against the same document.
-- **CI starts real Hindsight 1.1.0, 1.2.0, 1.2.1 and 1.2.3 servers** (`hindsight-api-slim` with local ONNX embeddings and no LLM) and runs the integration suite against them, including a Laravel AI agent and a Symfony AI agent that each remember a fact from one conversation in the next.
+- **OpenAPI checks validate requests and responses** against the pinned [1.1.0](tests/Fixtures/openapi-1.1.0.json) and [1.2.1](tests/Fixtures/openapi-1.2.1.json) documents. For knowledge banks, unit tests check the outgoing request and the integration test validates it against the running 1.3 server's OpenAPI document. The schema checks reject misspelled fields the server would otherwise ignore.
+- **CI starts real Hindsight 1.1.0, 1.2.0, 1.2.1, 1.2.3 and 1.3.0 servers** (`hindsight-api-slim` with local ONNX embeddings and no LLM) and runs the integration suite against them, including a Laravel AI agent and a Symfony AI agent that each remember a fact from one conversation in the next. The 1.3 job also indexes a knowledge document, searches for it and runs the example.
 - **The fake is checked against the same OpenAPI document and against real servers.** A unit test validates the request and response for each endpoint the fake simulates. The integration suite compares tag filters, document replacement, missing banks, pagination, bank deletion, rejected retains and accepted timestamps with the real servers.
 - **Queued retains run through Laravel's `queue:work --once` command** on the database queue driver, inside the test process with time travel: a job released while Hindsight answers `503` is stored once it is back, a retry after a lost answer sends the same operation ID, only the last failed attempt is reported, and a `401` fails the job without retries. Against a real server, a job run twice is one operation and one memory, while the same async retain sent twice without an operation ID stores two copies.
 - PHPStan at level 9. The client reads response fields without trusting their types, so an unexpected value from the server becomes `null` instead of a `TypeError`.
@@ -734,7 +770,7 @@ Without an LLM the server cannot run reflect or mental models, so those are cove
 | Laravel MCP | 1.x | latest and lowest allowed |
 | Symfony AI agent | 0.15, 1.0 | 0.15 and 1.0.0-BETA1 |
 | Neuron AI | 4.1+ | latest and lowest allowed |
-| Hindsight API | 1.1, 1.2 (pages need 1.2.1) | 1.1.0, 1.2.0, 1.2.1 |
+| Hindsight API | 1.1, 1.2, 1.3 (pages need 1.2.1, knowledge banks need 1.3) | 1.1.0, 1.2.0, 1.2.1, 1.2.3, 1.3.0 |
 | Guzzle | 7.15+, 8 | 7 and 8 |
 
 ## Contributing

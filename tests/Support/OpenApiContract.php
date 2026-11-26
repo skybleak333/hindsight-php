@@ -30,9 +30,8 @@ final class OpenApiContract
 
     private Validator $serverValidator;
 
-    private function __construct(string $path)
+    private function __construct(string $json)
     {
-        $json = (string) file_get_contents($path);
         $this->spec = json_decode($json, true, flags: JSON_THROW_ON_ERROR);
 
         // Servers newer than the document add fields to their answers, and the client ignores the ones it does not know.
@@ -58,7 +57,7 @@ final class OpenApiContract
 
     public static function instance(): self
     {
-        return self::$instance ??= new self(__DIR__.'/../Fixtures/openapi-1.1.0.json');
+        return self::$instance ??= new self((string) file_get_contents(__DIR__.'/../Fixtures/openapi-1.1.0.json'));
     }
 
     /**
@@ -66,7 +65,12 @@ final class OpenApiContract
      */
     public static function v1_2(): self
     {
-        return self::$v1_2 ??= new self(__DIR__.'/../Fixtures/openapi-1.2.1.json');
+        return self::$v1_2 ??= new self((string) file_get_contents(__DIR__.'/../Fixtures/openapi-1.2.1.json'));
+    }
+
+    public static function fromDocument(object $document): self
+    {
+        return new self(json_encode($document, JSON_THROW_ON_ERROR));
     }
 
     /**

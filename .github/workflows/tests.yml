@@ -182,7 +182,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        hindsight: ['1.1.0', '1.2.0', '1.2.1', '1.2.3']
+        hindsight: ['1.1.0', '1.2.0', '1.2.1', '1.2.3', '1.3.0']
 
     env:
       # No LLM: retain stores chunks without fact extraction, recall works, reflect answers 400.
@@ -212,6 +212,10 @@ jobs:
 
       - name: Start Hindsight
         run: |
+          # Knowledge banks on 1.3 use the same local text embedder.
+          if [ "${{ matrix.hindsight }}" = "1.3.0" ]; then
+            export HINDSIGHT_API_KB_EMBEDDINGS_PROVIDER=text
+          fi
           nohup hindsight-api > hindsight.log 2>&1 &
           for attempt in $(seq 1 150); do
             if curl -sf http://127.0.0.1:8888/health > /dev/null; then break; fi
@@ -232,7 +236,12 @@ jobs:
           HINDSIGHT_TEST_URL: http://127.0.0.1:8888
           HINDSIGHT_TEST_REQUIRED: '1'
           HINDSIGHT_TEST_WEBHOOKS: '1'
+          HINDSIGHT_TEST_KNOWLEDGE_BANKS: ${{ matrix.hindsight == '1.3.0' && '1' || '0' }}
         run: vendor/bin/phpunit --testsuite integration
+
+      - name: Run the knowledge bank example
+        if: matrix.hindsight == '1.3.0'
+        run: php examples/knowledge-bank.php
 
       - name: Hindsight log
         if: always()
